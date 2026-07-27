@@ -4,13 +4,13 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#f5f8fc">
-<title>Anesthculator v0.35</title>
+<title>Anesthculator v0.37</title>
 <link rel="manifest" href="./manifest.json">
 <link rel="stylesheet" href="./style.css">
 </head>
 <body>
 <header>
-  <div class="brand"><span class="drop">💧</span><div><b>Anesthculator <small>v0.35</small></b><em>Calm OR • Thailand Edition</em></div></div>
+  <div class="headerLeft"><button id="appBackBtn" class="appBackBtn" type="button" aria-label="Back" title="Back">‹</button><div class="brand"><span class="drop">💧</span><div><b>Anesthculator <small>v0.37</small></b><em>Calm OR • Thailand Edition</em></div></div></div>
   <button id="theme">☾</button>
 </header>
 
@@ -77,12 +77,14 @@
       <span id="weightMini">60 kg</span>
       <span id="heightMini">165 cm</span>
     </div>
+    <details class="weightDetails"><summary>⚖️ Dosing weight details</summary><div class="weightGrid"><span>TBW<b id="pTBW">60 kg</b></span><span>IBW<b id="pIBW">—</b></span><span>LBW<b id="pLBW">—</b></span><span>AdjBW<b id="pAdjBW">—</b></span></div><small>Derived weights are calculation aids. The dose record determines which weight basis is used.</small></details>
   </div>
 </section>
 
 <section id="plan" class="tab">
   <div class="head"><div><span>CASE PLAN</span><h2>Anesthesia Plan</h2></div><strong id="chip"></strong></div>
   <div class="stats"><div>Age group<b id="ag">Adult</b></div><div>BMI<b id="bmi">—</b></div><div>BSA<b id="bsa">—</b></div></div>
+  <details class="weightDetails"><summary>⚖️ Dosing weights</summary><div class="weightGrid"><span>TBW<b id="planTBW">60 kg</b></span><span>IBW<b id="planIBW">—</b></span><span>LBW<b id="planLBW">—</b></span><span>AdjBW<b id="planAdjBW">—</b></span></div></details>
   <div class="quickLegend planLegend">
 <span class="ql" style="color:#e35b64">● Muscle relaxant</span>
 <span class="ql" style="color:#4f8fd8">● Opioid</span>
@@ -121,8 +123,11 @@
     <button id="importDrugsBtn">⬇️ Import Local Drugs</button>
     <input id="importDrugsFile" type="file" accept="application/json,.json" hidden>
   </div>
-  <div id="catFilters" class="catFilters"></div><div class="libraryHint">Search and Category are now mutually exclusive: typing a drug name resets Category to All; choosing a Category clears the old search automatically. Hidden drugs remain searchable and are marked HIDDEN. Library Hide does not affect Plan.<br><b>v0.28:</b> Primary Category is integrity-checked by Generic name against the Master Medication Database, so opioid drugs cannot be mislabeled as Non-Opioid Analgesics.<br>
-<b>Classification:</b> v0.25 uses a single canonical set of 16 Primary Categories from the uploaded medication database. Legacy synonyms such as Opioids / Analgesics-Opioids are migrated to <b>Opioid Analgesics</b>.<br><b>Verification:</b> SOURCE VERIFIED = checked against an authoritative product/guideline source; LOCAL VERIFIED = clinician/institution-entered dose record stored on this device; THAI CROSS-CHECK PENDING = Thai-primary reconciliation not complete; CONFLICT = authoritative sources differ; DOSE LOCKED = calculator remains disabled for that record.</div>
+  <div id="catFilters" class="catFilters"></div>
+  <details class="libraryGuide">
+    <summary>ℹ️ Library guide / verification status</summary>
+    <div class="libraryHint">Search and Category are mutually exclusive: typing a drug name resets Category to All; choosing a Category clears the old search automatically. Hidden drugs remain searchable and are marked HIDDEN. Library Hide does not affect Plan.<br><b>Category integrity:</b> Primary Category is checked by Generic name against the Master Medication Database, so opioid drugs cannot be mislabeled as Non-Opioid Analgesics.<br><b>Classification:</b> a single canonical set of 16 Primary Categories is used; legacy synonyms are migrated to the canonical category.<br><b>Verification:</b> SOURCE VERIFIED = authoritative source checked; LOCAL VERIFIED = locally/institution-verified dose record; THAI CROSS-CHECK PENDING = Thai-primary reconciliation incomplete; CONFLICT = sources differ; DOSE LOCKED = calculator disabled for that record.</div>
+  </details>
   <div class="libraryLayout">
     <div id="libList" class="libList"></div>
     <div id="drugDetail" class="drugDetail emptyDetail">

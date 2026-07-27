@@ -1,4 +1,4 @@
-Anesthculator v0.35 — GitHub Pages build
+Anesthculator v0.36 — GitHub Pages build
 
 This build is adjusted for GitHub Pages project-site subpaths such as:
 https://USERNAME.github.io/Anesthculator/
@@ -19,4 +19,4 @@ Important:
 - Patient calculator data remains local in the browser; Cloud features cover shared library/reference data.
 
 
-v0.35: Every Drug Library dose record now has a real Verify action button; verification remains phase/indication-specific.
+v0.36: Every Drug Library dose record now has a real Verify action button; verification remains phase/indication-specific.

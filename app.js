@@ -156,9 +156,62 @@ function sync(){
  let ag=agegroup(),bmi=weight&&height?weight/(height/100)**2:0,bsa=weight&&height?Math.sqrt(weight*height/3600):0;
  $("ag").textContent=ag;$("bmi").textContent=bmi?bmi.toFixed(1):"—";$("bsa").textContent=bsa?bsa.toFixed(2)+" m²":"—";
  $("chip").textContent=`${ag} • ${fmt(weight)} kg`;$("cchip").textContent=`${ag} • ${fmt(weight)} kg`;
+ let dw=derivedWeights();
+ ["p","plan"].forEach(prefix=>{let a=$(prefix+"TBW"),i=$(prefix+"IBW"),l=$(prefix+"LBW"),ad=$(prefix+"AdjBW");if(a)a.textContent=fmt(dw.TBW)+" kg";if(i)i.textContent=fmt(dw.IBW)+" kg";if(l)l.textContent=fmt(dw.LBW)+" kg";if(ad)ad.textContent=fmt(dw.AdjBW)+" kg";});
  render(); crisis();
 }
-document.querySelectorAll("nav button").forEach(b=>b.onclick=()=>{document.querySelectorAll(".tab").forEach(t=>t.classList.remove("on"));document.querySelectorAll("nav button").forEach(t=>t.classList.remove("on"));$(b.dataset.tab).classList.add("on");b.classList.add("on")});
+// In-app navigation history. This changes views without reloading the page, so patient inputs and local edits stay intact.
+const appNavHistory=[];
+let appApplyingHistory=false;
+function activeTabId(){return document.querySelector(".tab.on")?.id||"patient"}
+function currentAppView(){
+  const detailOpen=document.getElementById("drugDetail")?.classList.contains("open");
+  return {tab:activeTabId(),detail:detailOpen?selectedDrugId:null};
+}
+function sameAppView(a,b){return !!a&&!!b&&a.tab===b.tab&&a.detail===b.detail}
+function updateAppBackBtn(){
+  const b=$("appBackBtn"); if(!b)return;
+  b.disabled=appNavHistory.length===0;
+  b.classList.toggle("isDisabled",appNavHistory.length===0);
+}
+function rememberAppView(){
+  if(appApplyingHistory)return;
+  const now=currentAppView(), last=appNavHistory[appNavHistory.length-1];
+  if(!sameAppView(now,last))appNavHistory.push(now);
+  if(appNavHistory.length>30)appNavHistory.shift();
+  updateAppBackBtn();
+}
+function showAppTab(tabId,remember=true){
+  if(!$(tabId))return;
+  const now=currentAppView();
+  if(remember && now.tab!==tabId)rememberAppView();
+  document.querySelectorAll(".tab").forEach(t=>t.classList.remove("on"));
+  document.querySelectorAll("nav button").forEach(t=>t.classList.remove("on"));
+  $(tabId).classList.add("on");
+  document.querySelector(`nav button[data-tab="${tabId}"]`)?.classList.add("on");
+  if(tabId!=="library")document.getElementById("drugDetail")?.classList.remove("open");
+  updateAppBackBtn();
+}
+function applyAppView(v){
+  if(!v)return;
+  appApplyingHistory=true;
+  showAppTab(v.tab||"patient",false);
+  document.getElementById("drugDetail")?.classList.remove("open");
+  if(v.tab==="library"&&v.detail)openGenericDrugDetail(encodeURIComponent(v.detail),false);
+  appApplyingHistory=false;
+  updateAppBackBtn();
+}
+function goAppBack(){
+  const openDlg=[...document.querySelectorAll("dialog[open]")].pop();
+  if(openDlg){openDlg.close();return;}
+  if(!appNavHistory.length)return;
+  const prev=appNavHistory.pop();
+  applyAppView(prev);
+}
+window.goAppBack=goAppBack;
+document.querySelectorAll("nav button").forEach(b=>b.onclick=()=>showAppTab(b.dataset.tab,true));
+if($("appBackBtn"))$("appBackBtn").onclick=goAppBack;
+updateAppBackBtn();
 
 
 function recordsForPhase(d,phase){
@@ -175,12 +228,37 @@ function drugForRecord(d,r){
    min:r.min??d.min,max:r.max??d.max,def:r.def??d.def,unit:r.unit||d.unit,
    stock:r.stock??d.stock,stockUnit:r.stockUnit||d.stockUnit,
    ref:r.ref||d.ref,
+   dosingWeight:r.dosingWeight||r.dosing_weight||d.dosingWeight||d.dosing_weight||"TBW",
+   dosingWeightFormula:r.dosingWeightFormula||r.dosing_weight_formula||d.dosingWeightFormula||d.dosing_weight_formula||"",
    recordPhase:r.phase||d.phase
  };
 }
+function derivedWeights(){
+ const h=height/100, bmi=(weight>0&&h>0)?weight/(h*h):null;
+ // IBW: Lemmens et al. 2005 (22 × height²); LBW: Janmahasatian et al. 2005.
+ const ibw=h>0?22*h*h:null;
+ let lbw=null;
+ if(bmi&&weight>0){
+   lbw=sex==="Male"?(9270*weight)/(6680+216*bmi):(9270*weight)/(8780+244*bmi);
+ }
+ const adjbw=(ibw!=null)?ibw+0.4*(weight-ibw):null;
+ return {TBW:weight,IBW:ibw,LBW:lbw,AdjBW:adjbw,bmi};
+}
+function normalizeWeightBasis(v){
+ const x=String(v||"TBW").trim().toUpperCase();
+ if(["ACTUAL","ABW","ACTUAL BODY WEIGHT"].includes(x))return "TBW";
+ if(x==="ADJBW"||x==="ADJUSTED"||x==="ADJUSTED BODY WEIGHT")return "AdjBW";
+ return ["TBW","IBW","LBW"].includes(x)?x:"TBW";
+}
+function weightBasisInfo(d){
+ const basis=normalizeWeightBasis(d.dosingWeight||d.dosing_weight||d.weightBasis||"TBW"), w=derivedWeights(), kg=w[basis];
+ const labels={TBW:"Actual Body Weight",IBW:"Ideal Body Weight",LBW:"Lean Body Weight",AdjBW:"Adjusted Body Weight"};
+ const formulas={TBW:"Patient-entered actual weight",IBW:"Lemmens (2005): 22 × height²",LBW:"Janmahasatian (2005)",AdjBW:"IBW + 0.4 × (TBW − IBW)"};
+ return {basis,label:labels[basis],formula:formulas[basis],kg};
+}
 function calc(d){
- let total=d.unit.includes("/kg")?d.def*weight:d.def, rate=d.unit.includes("/hr")||d.unit.includes("/min"), unit=d.unit.startsWith("mcg")?"mcg":"mg", vol=total/d.stock;
- return{total,rate,unit,vol};
+ let wb=weightBasisInfo(d), perKg=(d.unit||"").includes("/kg"), total=perKg?d.def*wb.kg:d.def, rate=(d.unit||"").includes("/hr")||(d.unit||"").includes("/min"), unit=(d.unit||"").startsWith("mcg")?"mcg":"mg", vol=total/d.stock;
+ return{total,rate,unit,vol,weightBasis:wb};
 }
 
 let dilutionPrefs=JSON.parse(localStorage.getItem("anesthDilutionPrefs")||"{}");
@@ -325,6 +403,7 @@ function applyRecordVerification(d){
     preferredTarget:v.target!==""&&v.target!=null?+v.target:d.preferredTarget,
     preferredFinal:v.finalVol!==""&&v.finalVol!=null?+v.finalVol:d.preferredFinal,
     ref:"LOCAL VERIFIED • "+v.reference+" • "+v.version+" • "+v.location+" • "+v.verifiedAt,
+    dosingWeight:v.dosingWeight||d.dosingWeight||"TBW",
     checked:1,localVerified:true,localVerification:v
   };
 }
@@ -355,6 +434,9 @@ window.openVerify=(id,phase="",context="")=>{
  <select id="lvPop"><option ${old.population==="Adult + Pediatric"?"selected":""}>Adult + Pediatric</option><option ${old.population==="Adult"?"selected":""}>Adult</option><option ${old.population==="Pediatric"?"selected":""}>Pediatric</option></select>
  <label>Route</label>
  <select id="lvRoute"><option ${old.route==="IV"?"selected":""}>IV</option><option ${old.route==="IM"?"selected":""}>IM</option><option ${old.route==="IV/IM"?"selected":""}>IV/IM</option><option ${old.route==="Other"?"selected":""}>Other</option></select>
+ <label>Dosing weight basis</label>
+ <select id="lvWeightBasis"><option value="TBW" ${(old.dosingWeight||d.dosingWeight||"TBW")==="TBW"?"selected":""}>TBW — Actual Body Weight</option><option value="IBW" ${(old.dosingWeight||d.dosingWeight)==="IBW"?"selected":""}>IBW — Ideal Body Weight</option><option value="LBW" ${(old.dosingWeight||d.dosingWeight)==="LBW"?"selected":""}>LBW — Lean Body Weight</option><option value="AdjBW" ${(old.dosingWeight||d.dosingWeight)==="AdjBW"?"selected":""}>AdjBW — Adjusted Body Weight</option></select>
+ <div class="note">Weight basis is verified per dose record. Existing records default to TBW until a different basis is explicitly verified.</div>
 
  <div class="localFormGrid">
   <label>Dose min<input id="lvMin" type="number" step="any" value="${old.min??d.min??""}"></label>
@@ -385,7 +467,7 @@ window.openVerify=(id,phase="",context="")=>{
 window.saveLocalVerification=(id,phase,context,btn)=>{
  let dlg=btn.closest("dialog"),g=x=>dlg.querySelector("#"+x);
  let v={
-  population:g("lvPop").value,route:g("lvRoute").value,
+  population:g("lvPop").value,route:g("lvRoute").value,dosingWeight:g("lvWeightBasis").value,
   min:g("lvMin").value,def:g("lvDef").value,max:g("lvMax").value,
   unit:g("lvUnit").value.trim(),stock:g("lvStock").value,stockUnit:g("lvStockUnit").value.trim(),
   target:g("lvTarget").value,finalVol:g("lvFinal").value,
@@ -889,8 +971,10 @@ window.saveStockEditor=(id,btn)=>{
   if(d)openGenericDrugDetail(encodeURIComponent(genericKey(d.name)));
 };
 
-window.openGenericDrugDetail=encodedKey=>{
+window.openGenericDrugDetail=(encodedKey,remember=true)=>{
  let key=decodeURIComponent(encodedKey),group=genericGroups().get(key);if(!group?.length)return;
+ const detailAlreadyOpen=document.getElementById("drugDetail")?.classList.contains("open")&&selectedDrugId===key;
+ if(remember&&!detailAlreadyOpen)rememberAppView();
  selectedDrugId=key;
  let d=representativeDrug(group), records=aggregateDoseRecords(group), detail=$("drugDetail");
  let allLocked=group.every(g=>effectiveDrug(g).doseLocked);
@@ -929,6 +1013,7 @@ window.openGenericDrugDetail=encodedKey=>{
      `<table class="detailTable">
        <tr><td>Dose range</td><td>${r.min??rec.min}–${r.max??rec.max} ${r.unit||rec.unit}</td></tr>
        <tr><td>Default</td><td>${r.def??rec.def} ${r.unit||rec.unit}</td></tr>
+       ${(r.unit||rec.unit||"").includes("/kg")?`<tr class="weightBasisRow"><td>Dosing weight</td><td><b><span class="weightBasisBadge">${c.weightBasis.basis}</span> ${c.weightBasis.label}</b><br><span class="weightBasisValue">${fmt(c.weightBasis.kg)} kg</span><br><small>${c.weightBasis.formula}</small></td></tr>`:""}
        <tr><td>Calculated dose</td><td><span class="detailDose">${fmt(c.total)} ${c.unit}${c.rate?((rec.unit||"").includes("/hr")?"/hr":"/min"):""}</span></td></tr>
        <tr><td>Stock</td><td><b>${rec.stock} ${rec.stockUnit}</b> ${rec.stockOverridden?'<span class="overrideBadge">CUSTOM STOCK</span>':""}<br><button class="miniStockBtn" onclick="openStockEditor('${source.id}')">✏️ Edit stock</button></td></tr>
        <tr><td>DRAW / Pump</td><td><b>${fmt(c.vol)} mL${c.rate?((rec.unit||"").includes("/hr")?"/hr":"/min"):""}</b></td></tr>
@@ -947,7 +1032,10 @@ window.openGenericDrugDetail=encodedKey=>{
  </div>`;
  renderLibraryCompact();
 };
-window.closeDrugDetail=()=>{$("drugDetail").classList.remove("open")};
+window.closeDrugDetail=()=>{
+ if(appNavHistory.length){goAppBack();return;}
+ $("drugDetail").classList.remove("open");selectedDrugId=null;updateAppBackBtn();
+};
 $("search").oninput=()=>{
  if(($("search").value||"").trim().length>0 && selectedCategory!=="All"){
    selectedCategory="All";

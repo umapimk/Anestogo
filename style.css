@@ -546,3 +546,20 @@ html[data-dark="1"] .detailDose{background:var(--soft)}
 .verifyDoseBtn:active{transform:translateY(1px)}
 .verifyDoseBadge{display:inline-block;border-radius:999px;padding:4px 7px;background:#fff2d8;color:#8b5b00;font-size:9px;font-weight:900}
 html[data-dark="1"] .verifyDoseBadge{background:#3a2b0d;color:#ffd57a}
+
+/* v0.36 compact library guidance + persistent in-app Back */
+.headerLeft{display:flex;align-items:center;gap:8px;min-width:0}
+.appBackBtn{width:38px;height:38px;min-width:38px;border-radius:13px;padding:0;display:grid;place-items:center;font-size:30px;line-height:1;background:var(--soft);color:var(--blue);border:1px solid var(--line)}
+.appBackBtn.isDisabled,.appBackBtn:disabled{opacity:.28;pointer-events:none}
+.libraryGuide{margin:4px 0 10px;border:1px solid var(--line);border-radius:13px;background:var(--card);overflow:hidden}
+.libraryGuide summary{padding:9px 11px;cursor:pointer;color:var(--muted);font-size:11px;font-weight:800;list-style:none}
+.libraryGuide summary::-webkit-details-marker{display:none}
+.libraryGuide summary:after{content:"▾";float:right}
+.libraryGuide[open] summary:after{content:"▴"}
+.libraryGuide .libraryHint{margin:0;border:0;border-top:1px solid var(--line);border-radius:0;padding:10px 11px;font-size:10px;line-height:1.55}
+@media(max-width:480px){.appBackBtn{width:34px;height:34px;min-width:34px;font-size:27px}.headerLeft{gap:5px}.brand b{font-size:19px}}
+
+/* v0.37 dosing-weight UI */
+.weightBasisBadge{display:inline-block;padding:.18rem .5rem;border-radius:999px;background:#dff6e9;color:#137a45;font-weight:900;letter-spacing:.02em}.weightBasisValue{font-size:1.18em;font-weight:900;color:var(--ink,#172033)}.weightBasisRow small{display:inline-block;margin-top:.25rem;color:#73839b;line-height:1.35}.libraryGuide>summary{cursor:pointer}.appBackBtn{touch-action:manipulation}
+
+.weightDetails{margin:12px 0;padding:12px 14px;border:1px solid #dbe5f1;border-radius:16px;background:#f8fbff}.weightDetails summary{font-weight:800;cursor:pointer}.weightGrid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:10px}.weightGrid span{background:white;border:1px solid #e3eaf3;border-radius:12px;padding:9px;text-align:center;color:#73839b;font-size:.82rem}.weightGrid b{display:block;color:#172033;font-size:1rem;margin-top:3px}@media(max-width:560px){.weightGrid{grid-template-columns:repeat(2,1fr)}}
