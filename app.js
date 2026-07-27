@@ -349,7 +349,7 @@ window.openVerify=(id,phase="",context="")=>{
  box.innerHTML=`<form class="verifyForm" onsubmit="return false">
  <div class="head"><h2>Local Verify — ${d.name}</h2><button type="button" onclick="this.closest('dialog').close()">✕</button></div>
  <div class="note"><b>${d.recordPhase||d.phase||"Dose record"}</b> • ${d.context||"No context"}<br>
- This creates a local verified dose record on this device. It does not modify the built-in source record.</div>
+ This verifies only this dose record (phase + indication) on this device. It does not verify the other dose records for the same drug and does not modify the built-in source record.</div>
 
  <label>Population</label>
  <select id="lvPop"><option ${old.population==="Adult + Pediatric"?"selected":""}>Adult + Pediatric</option><option ${old.population==="Adult"?"selected":""}>Adult</option><option ${old.population==="Pediatric"?"selected":""}>Pediatric</option></select>
@@ -924,15 +924,18 @@ window.openGenericDrugDetail=encodedKey=>{
    locked=!!rec.doseLocked;
    let c=locked?null:calc(rec);
    return `<div class="phaseRecord drugCardTheme" data-cat="${categories.join(" | ")}">
-     <div class="phaseRecordHead"><b>${r.phase||"Other"} ${rec.localVerified?'<span class="verifiedBadge">LOCAL VERIFIED</span>':""}</b><span>${r.context||""}</span></div>
-     ${locked?`<div class="lockedDose">🔒 DOSE LOCKED</div><div class="phaseRecordActions"><button onclick='openVerify("${source.id}",${JSON.stringify(r.phase||rec.phase||"")},${JSON.stringify(r.context||rec.context||"")})'>🔓 Local Verify & Unlock</button></div>`:
+     <div class="phaseRecordHead"><b>${r.phase||"Other"} ${rec.localVerified?'<span class="verifiedBadge">LOCAL VERIFIED</span>':(rec.verification==="SOURCE_VERIFIED"?'<span class="sourceVerifiedBadge">SOURCE VERIFIED</span>':(!locked?'<span class="verifyDoseBadge">VERIFY</span>':""))}</b><span>${r.context||""}</span></div>
+     ${locked?`<div class="lockedDose">🔒 DOSE LOCKED</div>`:
      `<table class="detailTable">
        <tr><td>Dose range</td><td>${r.min??rec.min}–${r.max??rec.max} ${r.unit||rec.unit}</td></tr>
        <tr><td>Default</td><td>${r.def??rec.def} ${r.unit||rec.unit}</td></tr>
        <tr><td>Calculated dose</td><td><span class="detailDose">${fmt(c.total)} ${c.unit}${c.rate?((rec.unit||"").includes("/hr")?"/hr":"/min"):""}</span></td></tr>
        <tr><td>Stock</td><td><b>${rec.stock} ${rec.stockUnit}</b> ${rec.stockOverridden?'<span class="overrideBadge">CUSTOM STOCK</span>':""}<br><button class="miniStockBtn" onclick="openStockEditor('${source.id}')">✏️ Edit stock</button></td></tr>
        <tr><td>DRAW / Pump</td><td><b>${fmt(c.vol)} mL${c.rate?((rec.unit||"").includes("/hr")?"/hr":"/min"):""}</b></td></tr>
-     </table><div class="phaseRecordActions">${rec.localVerified?`<button onclick='openVerify("${source.id}",${JSON.stringify(r.phase||rec.phase||"")},${JSON.stringify(r.context||rec.context||"")})'>✏️ Edit Local Verify</button>`:""}</div>`}
+     </table>`}
+     <div class="phaseRecordActions">
+       <button class="verifyDoseBtn" onclick='openVerify("${source.id}",${JSON.stringify(r.phase||rec.phase||"")},${JSON.stringify(r.context||rec.context||"")})'>${rec.localVerified?"✏️ Edit Local Verify":(locked?"🔓 Local Verify & Unlock":(rec.verification==="SOURCE_VERIFIED"?"🔎 Review / Local Verify":"🔎 Verify this dose"))}</button>
+     </div>
      ${rec.ref?`<div class="detailRef">${rec.ref}</div>`:""}
    </div>`;
  }).join("")}

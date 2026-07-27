@@ -1,4 +1,4 @@
-/* Anesthculator v0.33 Cloud — library/reference data only; no patient fields are sent. */
+/* Anesthculator v0.34 Cloud — library/reference data only; no patient fields are sent. */
 (()=>{
 const SUPABASE_URL='https://uktfoqvmkxfpczbbmepy.supabase.co';
 const SUPABASE_KEY='sb_publishable_A2NLYpy1dt1D30lwa_S3bg_656DfnPH';

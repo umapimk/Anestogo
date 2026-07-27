@@ -540,3 +540,9 @@ html[data-dark="1"] .detailDose{background:var(--soft)}
 .verifyForm .note{margin-bottom:10px}
 /* v0.33 cloud */
 .cloudCard{margin:12px 0}.cloudGrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.cloudCard label{display:flex;flex-direction:column;gap:5px;margin:8px 0}.cloudCard input,.cloudCard select,.cloudCard textarea{width:100%;box-sizing:border-box}@media(max-width:700px){.cloudGrid{grid-template-columns:1fr}}
+
+/* v0.34 dose-record verification CTA */
+.verifyDoseBtn{background:#5f4aa8;color:#fff;border-color:#5f4aa8;font-weight:850;box-shadow:0 4px 12px rgba(95,74,168,.18)}
+.verifyDoseBtn:active{transform:translateY(1px)}
+.verifyDoseBadge{display:inline-block;border-radius:999px;padding:4px 7px;background:#fff2d8;color:#8b5b00;font-size:9px;font-weight:900}
+html[data-dark="1"] .verifyDoseBadge{background:#3a2b0d;color:#ffd57a}
