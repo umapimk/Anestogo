@@ -563,3 +563,8 @@ html[data-dark="1"] .verifyDoseBadge{background:#3a2b0d;color:#ffd57a}
 .weightBasisBadge{display:inline-block;padding:.18rem .5rem;border-radius:999px;background:#dff6e9;color:#137a45;font-weight:900;letter-spacing:.02em}.weightBasisValue{font-size:1.18em;font-weight:900;color:var(--ink,#172033)}.weightBasisRow small{display:inline-block;margin-top:.25rem;color:#73839b;line-height:1.35}.libraryGuide>summary{cursor:pointer}.appBackBtn{touch-action:manipulation}
 
 .weightDetails{margin:12px 0;padding:12px 14px;border:1px solid #dbe5f1;border-radius:16px;background:#f8fbff}.weightDetails summary{font-weight:800;cursor:pointer}.weightGrid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:10px}.weightGrid span{background:white;border:1px solid #e3eaf3;border-radius:12px;padding:9px;text-align:center;color:#73839b;font-size:.82rem}.weightGrid b{display:block;color:#172033;font-size:1rem;margin-top:3px}@media(max-width:560px){.weightGrid{grid-template-columns:repeat(2,1fr)}}
+
+/* v0.38: make Back control unmistakable and always visible in the sticky header */
+.appBackBtn{width:auto!important;min-width:82px!important;height:38px!important;padding:0 11px!important;display:flex!important;gap:5px;align-items:center;justify-content:center;font-size:15px!important;font-weight:900!important;white-space:nowrap}
+.appBackBtn span{font-size:12px}
+@media(max-width:480px){.appBackBtn{min-width:68px!important;padding:0 8px!important}.appBackBtn span{font-size:11px}}
