@@ -4,13 +4,13 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#f5f8fc">
-<title>Anesthculator v0.38</title>
+<title>Anesthculator v0.39</title>
 <link rel="manifest" href="./manifest.json">
 <link rel="stylesheet" href="./style.css">
 </head>
 <body>
 <header>
-  <div class="headerLeft"><button id="appBackBtn" class="appBackBtn" type="button" aria-label="Back" title="Back">← <span>Back</span></button><div class="brand"><span class="drop">💧</span><div><b>Anesthculator <small>v0.38</small></b><em>Calm OR • Thailand Edition</em></div></div></div>
+  <div class="headerLeft"><button id="appBackBtn" class="appBackBtn" type="button" aria-label="Back" title="Back">← <span>Back</span></button><div class="brand"><span class="drop">💧</span><div><b>Anesthculator <small>v0.39</small></b><em>Calm OR • Thailand Edition</em></div></div></div>
   <button id="theme">☾</button>
 </header>
 
@@ -174,19 +174,14 @@
 </main>
 
 <section id="cloud" class="tab">
-  <div class="head"><div><span>CLOUD LIBRARY</span><h2>☁️ Supabase Sync</h2></div><strong id="cloudStatus">Signed out</strong></div>
-  <div class="warning"><b>Privacy boundary:</b> Patient age, sex, weight, height and case calculations are never uploaded by this cloud module. Only Drug Library, references, verification metadata and evidence files are cloud-enabled.</div>
-  <div id="cloudAuthCard" class="card cloudCard">
-    <h3>Account</h3><p id="cloudUserText">Sign in to use the shared Drug Library.</p>
-    <div class="cloudGrid"><label>Email<input id="cloudEmail" type="email" autocomplete="email"></label><label>Password<input id="cloudPassword" type="password" autocomplete="current-password"></label></div>
-    <div class="drugActions"><button id="cloudSignIn" type="button">Sign in</button><button id="cloudSignUp" type="button">Create account</button><button id="cloudSignOut" type="button" hidden>Sign out</button></div>
-  </div>
-  <div class="card cloudCard"><h3>Shared library</h3><p id="cloudSyncText">Sign in first.</p><div class="drugActions"><button id="cloudRefresh" type="button">↻ Refresh Cloud Library</button></div></div>
-  <div class="card cloudCard"><h3>Reference Evidence Manager</h3><p>Create reference metadata, then optionally attach PDF / Excel / image evidence. Upload requires the Supabase Storage bucket and policies included in <b>SUPABASE_v033_SETUP.sql</b>.</p>
-    <div class="cloudGrid"><label>Title<input id="refTitle"></label><label>Organization<input id="refOrg"></label><label>Edition / version<input id="refEdition"></label><label>Publication date<input id="refDate" type="date"></label><label>Page<input id="refPage"></label><label>Table<input id="refTable"></label><label>Section<input id="refSection"></label><label>Source type<select id="refType"><option>guideline</option><option>product_label</option><option>institutional_protocol</option><option>textbook</option><option>other</option></select></label></div>
-    <label>URL<input id="refUrl" type="url"></label><label>Notes<textarea id="refNotes" rows="3"></textarea></label><label>Evidence file (optional)<input id="refFile" type="file" accept=".pdf,.xlsx,.xls,image/*"></label>
-    <div class="drugActions"><button id="saveReferenceCloud" type="button">＋ Save Reference / Evidence</button></div><div id="refCloudResult" class="note"></div>
-  </div>
+  <div class="head"><div><span>CLOUD LIBRARY</span><h2>☁️ Evidence & Verification Cloud</h2></div><strong id="cloudStatus">Signed out</strong></div>
+  <div class="warning"><b>Privacy boundary:</b> Patient age, sex, weight, height and case calculations are never uploaded. Only Drug Library, references, verification metadata and evidence files are cloud-enabled.</div>
+  <div id="cloudAuthCard" class="card cloudCard"><h3>Account</h3><p id="cloudUserText">Sign in to use the shared Drug Library.</p><div class="cloudGrid"><label>Email<input id="cloudEmail" type="email" autocomplete="email"></label><label>Password<input id="cloudPassword" type="password" autocomplete="current-password"></label></div><div class="drugActions"><button id="cloudSignIn" type="button">Sign in</button><button id="cloudSignUp" type="button">Create account</button><button id="cloudSignOut" type="button" hidden>Sign out</button><button id="cloudRefresh" type="button">↻ Refresh</button></div><p id="cloudSyncText">Sign in first.</p></div>
+  <div class="cloudTabs" role="tablist"><button data-cloudtab="references" class="active">References</button><button data-cloudtab="files">Evidence Files</button><button data-cloudtab="verifications">Verifications</button><button data-cloudtab="users">Users / Roles</button></div>
+  <div id="cloudPane-references" class="cloudPane active"><div class="card cloudCard"><h3>References</h3><div id="cloudReferencesList" class="cloudList">Sign in and refresh.</div></div><div class="card cloudCard"><h3>Add Reference</h3><p id="cloudDoseContext" class="note">Not linked to a dose record.</p><div class="cloudGrid"><label>Title<input id="refTitle"></label><label>Organization<input id="refOrg"></label><label>Edition / version<input id="refEdition"></label><label>Publication date<input id="refDate" type="date"></label><label>Page<input id="refPage"></label><label>Table<input id="refTable"></label><label>Section<input id="refSection"></label><label>Source type<select id="refType"><option>guideline</option><option>product_label</option><option>institutional_protocol</option><option>textbook</option><option>other</option></select></label></div><label>URL<input id="refUrl" type="url"></label><label>Notes<textarea id="refNotes" rows="3"></textarea></label><label>Evidence file (optional)<input id="refFile" type="file" accept=".pdf,.xlsx,.xls,image/*"></label><div class="drugActions"><button id="saveReferenceCloud" type="button">＋ Save Reference / Evidence</button></div><div id="refCloudResult" class="note"></div></div></div>
+  <div id="cloudPane-files" class="cloudPane"><div class="card cloudCard"><h3>Evidence Files</h3><div id="cloudFilesList" class="cloudList">Sign in and refresh.</div></div></div>
+  <div id="cloudPane-verifications" class="cloudPane"><div class="card cloudCard"><h3>Verifications</h3><p id="verificationDoseContext" class="note">Select a cloud dose record from Drug Library to filter or verify.</p><div id="cloudVerificationsList" class="cloudList">Sign in and refresh.</div><div class="drugActions"><button id="createPendingVerification" type="button">＋ Create pending verification for selected dose</button></div></div></div>
+  <div id="cloudPane-users" class="cloudPane"><div class="card cloudCard"><h3>Users / Roles</h3><div id="cloudUsersList" class="cloudList">Sign in and refresh.</div></div></div>
 </section>
 
 <dialog id="dilutionDialog">

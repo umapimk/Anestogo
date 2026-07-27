@@ -649,7 +649,9 @@ window.openLocalDrugEditor=(id=null)=>{
  <div class="note">This drug is stored only on this device/browser. After saving, use Edit Classification to assign multiple Categories, multiple Phases and phase-specific dosing records.</div>
  <div class="localFormGrid">
  <label>Generic name<input id="ldName" value="${d.name||""}" required></label>
- <label>Category<input id="ldCategory" value="${d.category||""}" placeholder="e.g. Hemodynamic drug"></label>
+ <label>Primary Category<select id="ldCategory">
+ ${CANONICAL_CATEGORIES.map(x=>`<option value="${x}" ${canonicalizeCategory(d.category)===x?"selected":""}>${x}</option>`).join("")}
+ </select></label>
  <label>Phase<select id="ldPhase">
  ${["Induction","NMB","Reversal","PONV","Post-op","Hemodynamics","Emergency","Local","Obstetric","Other"].map(x=>`<option ${d.phase===x?"selected":""}>${x}</option>`).join("")}
  </select></label>
@@ -680,7 +682,7 @@ window.saveLocalDrug=(id,btn)=>{
  let o=localDrugTemplate({
   id,
   name,
-  category:g("ldCategory").value.trim()||"Other / adjuncts",
+  category:canonicalizeCategory(g("ldCategory").value)||CANONICAL_CATEGORIES[0],
   phase:g("ldPhase").value,
   route:g("ldRoute").value,
   context:g("ldContext").value.trim(),
@@ -993,6 +995,7 @@ window.openGenericDrugDetail=(encodedKey,remember=true)=>{
  </div>
 
  <div class="classifyActions"><button onclick="openClassificationEditor('${group[0].id}')">🗂 Categories & Phases</button>
+ ${group.filter(g=>g.localCustom).map(g=>`<button onclick="openLocalDrugEditor('${g.id}')">✏️ Edit Drug</button><button class="dangerBtn" onclick="deleteLocalDrug('${g.id}')">🗑 Delete Drug</button>`).join("")}
  ${group.some(g=>hiddenDrugs.includes(g.id))
  ?`<button onclick="unhideGenericInLibrary('${encodeURIComponent(key)}')">👁 Unhide in Drug Library</button>`
  :`<button onclick="hideGenericInLibrary('${encodeURIComponent(key)}')">🙈 Hide in Drug Library</button>`}
@@ -1020,6 +1023,12 @@ window.openGenericDrugDetail=(encodedKey,remember=true)=>{
      </table>`}
      <div class="phaseRecordActions">
        <button class="verifyDoseBtn" onclick='openVerify("${source.id}",${JSON.stringify(r.phase||rec.phase||"")},${JSON.stringify(r.context||rec.context||"")})'>${rec.localVerified?"✏️ Edit Local Verify":(locked?"🔓 Local Verify & Unlock":(rec.verification==="SOURCE_VERIFIED"?"🔎 Review / Local Verify":"🔎 Verify this dose"))}</button>
+     </div>
+     <div class="evidenceActions">
+       <button onclick='cloudDoseAction("evidence",${JSON.stringify(r.cloudDoseId||rec.cloudDoseId||null)},${JSON.stringify(d.name)})'>📎 View evidence</button>
+       <button onclick='cloudDoseAction("addref",${JSON.stringify(r.cloudDoseId||rec.cloudDoseId||null)},${JSON.stringify(d.name)})'>＋ Add reference</button>
+       <button onclick='cloudDoseAction("verify",${JSON.stringify(r.cloudDoseId||rec.cloudDoseId||null)},${JSON.stringify(d.name)})'>✓ Verify</button>
+       <button onclick='cloudDoseAction("history",${JSON.stringify(r.cloudDoseId||rec.cloudDoseId||null)},${JSON.stringify(d.name)})'>🕘 Verification history</button>
      </div>
      ${rec.ref?`<div class="detailRef">${rec.ref}</div>`:""}
    </div>`;
