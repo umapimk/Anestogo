@@ -373,8 +373,8 @@ window.openVerify=(id,phase="",context="")=>{
  <label>Verification note (optional)</label><textarea id="lvNote" rows="2">${old.note||""}</textarea>
 
  <div class="drugActions">
-  <button type="button" onclick="saveLocalVerification('${id}',${json.dumps(d.recordPhase||d.phase||"")},${json.dumps(d.context||"")},this)">✓ Save Local Verify</button>
-  ${old.reference?`<button type="button" onclick="removeLocalVerification('${id}',${json.dumps(d.recordPhase||d.phase||"")},${json.dumps(d.context||"")},this)">🔒 Remove Local Verify</button>`:""}
+  <button type="button" onclick="saveLocalVerification('${id}',${JSON.stringify(d.recordPhase||d.phase||"")},${JSON.stringify(d.context||"")},this)">✓ Save Local Verify</button>
+  ${old.reference?`<button type="button" onclick="removeLocalVerification('${id}',${JSON.stringify(d.recordPhase||d.phase||"")},${JSON.stringify(d.context||"")},this)">🔒 Remove Local Verify</button>`:""}
  </div>
  </form>`;
  document.body.appendChild(box);

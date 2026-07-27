@@ -1,4 +1,4 @@
-Anesthculator v0.33 Cloud
+Anesthculator v0.35 Cloud
 
 Added:
 - Supabase email/password authentication.
