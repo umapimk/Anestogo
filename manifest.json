@@ -1,0 +1,9 @@
+{
+  "name": "Anesthculator",
+  "short_name": "Anesthculator",
+  "start_url": "./",
+  "display": "standalone",
+  "background_color": "#f5f8fc",
+  "theme_color": "#f5f8fc",
+  "description": "Anesthesia dose, dilution and perioperative crisis decision-support prototype"
+}

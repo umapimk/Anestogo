@@ -1,0 +1,542 @@
+
+:root{--bg:#f5f8fc;--card:#fff;--soft:#eef3f9;--txt:#172033;--muted:#718096;--line:#dbe4ef;--blue:#466b91;--danger:#a92e45;--warn:#8a6518;--shadow:0 8px 26px #2c496014}
+html[data-dark="1"]{--bg:#07101f;--card:#0f1b2c;--soft:#14243a;--txt:#edf3ff;--muted:#9bacc3;--line:#293d5a;--blue:#a5c5e2;--warn:#ffd47a;--shadow:none}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--txt);font-family:system-ui,-apple-system,sans-serif}
+header{position:sticky;top:0;z-index:3;background:var(--bg);border-bottom:1px solid var(--line);padding:13px 17px;display:flex;justify-content:space-between;align-items:center}
+.brand{display:flex;gap:9px;align-items:center}.brand b{display:block;font-size:21px}.brand small{font-size:10px;background:var(--soft);padding:3px 6px;border-radius:8px}.brand em{font-size:10px;color:var(--muted);font-style:normal;display:block}
+.drop{font-size:25px;background:var(--soft);padding:7px;border-radius:13px}
+button{border:0;border-radius:11px;padding:10px 12px;background:var(--soft);color:var(--txt);font-weight:750}
+main{max-width:1000px;margin:auto;padding:13px}.warning{background:#fff7df;color:#795817;padding:11px;border-radius:13px;font-size:12px;margin-bottom:11px}html[data-dark="1"] .warning{background:#342a13;color:#ffd47a}
+nav{display:flex;gap:6px;overflow:auto;margin-bottom:12px}nav button{white-space:nowrap}nav .on,.primary{background:var(--blue);color:var(--bg)}
+.tab{display:none}.tab.on{display:block}.card,.phase,.drug,.crisisCard,.refCard{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:15px;box-shadow:var(--shadow)}
+.hero{background:linear-gradient(135deg,var(--soft),var(--card));border:1px solid var(--line);border-radius:20px;padding:18px;display:flex;justify-content:space-between;margin-bottom:11px}.hero span,.head span{font-size:10px;letter-spacing:.12em;color:var(--blue);font-weight:850}.hero h1{margin:5px 0;font-size:23px}.hero p{margin:0;color:var(--muted);font-size:13px}.hero i{font-size:48px}
+.progress{display:grid;grid-template-columns:repeat(4,1fr);gap:5px;margin-bottom:16px}.progress button{font-size:10px;padding:8px 4px}.progress .active{background:var(--blue);color:var(--bg)}.progress .done{opacity:.75}
+.wstep{display:none}.wstep.show{display:block}.labelBig{text-align:center;color:var(--muted);font-size:13px;font-weight:800}.sexRow{display:grid;grid-template-columns:1fr 1fr;gap:9px;margin:12px 0}.sexBtn{padding:20px 10px;font-size:17px}.sexBtn.selected,.ageSwitch .selected{outline:2px solid var(--blue);background:var(--soft);color:var(--blue)}
+.bigValue{text-align:center;margin:16px 0 12px}.bigValue span{font-size:54px;font-weight:900}.bigValue small{font-size:16px;color:var(--muted);margin-left:8px}.ageSwitch{display:flex;justify-content:center;gap:6px;margin:8px}.keypad{display:grid;grid-template-columns:repeat(3,1fr);gap:7px;max-width:390px;margin:0 auto 10px}.keypad button{font-size:22px;padding:14px}.wide{width:100%;padding:13px}
+.patientMini{display:flex;gap:6px;flex-wrap:wrap;justify-content:center;margin-top:12px}.patientMini span{background:var(--soft);border-radius:20px;padding:6px 9px;font-size:11px}
+.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:7px;margin:10px 0}.stats div{background:var(--soft);padding:10px;border-radius:12px;font-size:10px;color:var(--muted)}.stats b{display:block;color:var(--txt);font-size:17px}.head{display:flex;justify-content:space-between}.head h2{margin:4px 0}.head strong{font-size:11px;background:var(--soft);padding:7px 9px;border-radius:20px;height:max-content}
+.timeline{overflow:auto;white-space:nowrap;background:var(--card);border:1px solid var(--line);padding:10px;border-radius:13px;margin:9px 0;font-size:12px}.note{background:var(--soft);padding:10px;border-radius:11px;color:var(--muted);font-size:12px}.phase{margin:10px 0}.phase h3{margin:0 0 10px}.sub{font-size:11px;color:var(--blue);font-weight:850;text-transform:uppercase;margin:14px 0 6px}
+.drug{box-shadow:none;margin:7px 0;border-radius:14px}.drug h4{margin:0}.meta{color:var(--muted);font-size:11px}.stockLine{margin-top:8px;font-size:12px;color:var(--muted)}.stockLine b{color:var(--txt)}.dose{font-size:21px;font-weight:900;margin:5px 0}.dose b{color:var(--blue)}.drawLabel{font-size:9px;letter-spacing:.12em;color:var(--muted)}
+.tags span{font-size:9px;background:var(--soft);padding:4px 6px;border-radius:10px;margin-right:4px}.tags .verify{color:var(--warn)}details{font-size:11px;margin-top:8px}summary{color:var(--blue);font-weight:750}.ci,.caution,.ref{padding:8px;border-radius:9px;margin-top:6px}.ci{background:#fff0f2;color:#9a2d40}.caution{background:#fff7df;color:#795817}.ref{background:var(--soft);color:var(--muted)}html[data-dark="1"] .ci{background:#321c22;color:#ffb8c2}html[data-dark="1"] .caution{background:#342a13;color:#ffd47a}
+.drugActions{display:flex;gap:6px;margin-top:9px}.diluteBtn{background:var(--blue);color:var(--bg);font-size:11px}
+.red{color:var(--danger)!important}.cbuttons{display:flex;gap:6px;overflow:auto;margin:10px 0}.cbuttons button{white-space:nowrap}.cbuttons .sel{background:var(--danger);color:white}.crisisCard{border-top:4px solid var(--danger)}.step{background:var(--soft);padding:10px;border-radius:10px;margin:7px 0}.em{border:1px solid var(--line);padding:11px;border-radius:12px;margin:7px 0}.em b{display:block;color:var(--danger);font-size:23px}
+.refCard{margin:9px 0}.refCard p{margin:6px 0}.refCard small{color:var(--muted)}
+dialog{width:min(520px,94vw);background:var(--card);color:var(--txt);border:1px solid var(--line);border-radius:20px;padding:16px}dialog::backdrop{background:#0008}.dilutionTop{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:10px 0}.dilutionTop>div{background:var(--soft);padding:11px;border-radius:12px}.dilutionTop small,.prepareBox small,.drawBox small{display:block;color:var(--muted);font-size:9px;letter-spacing:.1em}.dilutionTop b{font-size:17px}.field{display:block;font-size:11px;color:var(--muted);margin:10px 0}.field input,.field select{width:100%;margin-top:5px;padding:11px;border:1px solid var(--line);border-radius:11px;background:var(--soft);color:var(--txt)}.field small{display:block;margin-top:4px}.prepareBox{background:var(--soft);padding:13px;border-radius:14px;margin-top:10px}.prepareBox div{font-size:16px;margin-top:6px}.prepareBox b{font-size:20px}.finalLine{border-top:1px solid var(--line);padding-top:8px}.drawBox{border:2px solid var(--blue);padding:13px;border-radius:14px;margin-top:10px}.drawBox b{font-size:30px;color:var(--blue);display:block}.badAlert{background:#fff0f2;color:#9a2d40;padding:9px;border-radius:10px;font-size:11px}
+@media(max-width:600px){.hero i{font-size:38px}.progress button{font-size:9px}.bigValue span{font-size:48px}}
+
+header{position:sticky;top:0}
+nav{position:sticky;top:69px;z-index:4;background:var(--bg);padding:7px 0 9px;border-bottom:1px solid var(--line);backdrop-filter:blur(14px)}
+.stockEdit{display:flex;align-items:center;gap:6px;margin-top:8px;flex-wrap:wrap}
+.stockEdit label{font-size:11px;color:var(--muted)}
+.stockEdit input{width:86px;padding:7px 8px;margin:0;border:1px solid var(--line);border-radius:9px;background:var(--soft);color:var(--txt)}
+.stockEdit select{width:auto;padding:7px 8px;margin:0;border:1px solid var(--line);border-radius:9px;background:var(--soft);color:var(--txt)}
+.working{margin-top:7px;padding:8px 10px;border-radius:11px;background:var(--soft);font-size:12px}
+.working b{color:var(--blue)}
+.crisisDx{background:var(--soft);padding:12px;border-radius:13px;margin:8px 0}
+.crisisDx b{display:block;margin-bottom:5px}
+.crisisSteps{counter-reset:step}
+.crisisStep{position:relative;padding:12px 12px 12px 45px;border:1px solid var(--line);border-radius:13px;margin:8px 0;background:var(--card)}
+.crisisStep:before{counter-increment:step;content:counter(step);position:absolute;left:11px;top:11px;width:25px;height:25px;display:grid;place-items:center;border-radius:9px;background:var(--danger);color:#fff;font-weight:900}
+.crisisDose{font-size:18px;font-weight:900;color:var(--danger);margin-top:5px}
+.crisisDose small{font-size:11px;color:var(--muted);font-weight:600}
+.sourceTag{font-size:10px;color:var(--muted);margin-top:9px}
+
+.perlsBanner{border:1px solid var(--line);border-left:5px solid var(--blue);background:var(--soft);padding:11px 12px;border-radius:13px;margin:8px 0 12px;font-size:12px}
+.perlsBanner b{display:block;font-size:13px;margin-bottom:3px}
+.causeGrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px;margin:8px 0}
+.cause{background:var(--soft);border:1px solid var(--line);padding:9px;border-radius:11px;font-size:11px}
+.cause b{display:block;margin-bottom:3px}
+@media(max-width:600px){.causeGrid{grid-template-columns:1fr}}
+
+.conflict{margin-top:9px;border:1px solid #d8a947;border-radius:12px;overflow:hidden;background:var(--card)}
+.conflict summary{padding:10px 12px;background:#fff7df;color:#795817;font-size:12px;font-weight:850}
+html[data-dark="1"] .conflict summary{background:#342a13;color:#ffd47a}
+.conflictBody{padding:11px;font-size:11px;line-height:1.5}
+.conflictBody table{width:100%;border-collapse:collapse;margin-top:7px}
+.conflictBody th,.conflictBody td{padding:7px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}
+.primaryThai{display:inline-block;padding:4px 7px;border-radius:999px;background:var(--blue);color:var(--bg);font-size:9px;font-weight:900;margin-bottom:6px}
+
+.libraryTools{display:flex;gap:7px;align-items:center;margin-bottom:10px}
+.libraryTools input{flex:1;margin:0}
+.hideBtn{font-size:10px;padding:7px 9px;margin-top:8px}
+.hiddenDrug{display:none!important}
+.hiddenListItem{display:flex;justify-content:space-between;align-items:center;gap:8px;background:var(--soft);padding:8px 10px;border-radius:10px;margin:6px 0;font-size:12px}
+.hemoBadge{font-size:9px;padding:4px 7px;border-radius:999px;background:#e9f5ef;color:#236a49;font-weight:800}
+html[data-dark="1"] .hemoBadge{background:#15351f;color:#9de1b5}
+
+.catFilters{display:flex;gap:6px;overflow:auto;margin:0 0 10px}
+.catFilters button{white-space:nowrap;font-size:10px;padding:8px 10px}
+.catFilters button.sel{background:var(--blue);color:var(--bg)}
+.lockedCard{opacity:.88}
+.lockedDose{margin-top:9px;padding:10px;border:1px dashed var(--warn);border-radius:11px;color:var(--warn);font-size:12px;font-weight:800}
+.categoryLabel{font-size:9px;letter-spacing:.08em;text-transform:uppercase;color:var(--blue);font-weight:900;margin-bottom:4px}
+
+#library .libraryTools{position:sticky;top:72px;z-index:18;background:var(--bg);padding:8px 0 6px}
+#library .catFilters{position:sticky;top:128px;z-index:17;background:var(--bg);padding:4px 0 7px}
+.planGroup{border:1px solid var(--line);border-radius:16px;margin:10px 0;overflow:hidden;background:var(--card)}
+.planGroup>summary{list-style:none;padding:14px 15px;font-weight:900;cursor:pointer;display:flex;justify-content:space-between;gap:10px}
+.planGroup>summary::-webkit-details-marker{display:none}.planGroupBody{padding:0 10px 10px}
+.phaseTools{display:flex;gap:7px;flex-wrap:wrap;margin:5px 0 10px}.phaseTools button{font-size:10px;padding:7px 9px}
+.hiddenInline{border:1px dashed var(--line);border-radius:12px;padding:8px;margin:7px 0}
+.hiddenInlineItem{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:6px;font-size:11px}
+.unlockBtn{font-size:10px;padding:7px 9px}.verifyForm label{display:block;font-size:11px;margin:8px 0 3px;color:var(--muted)}
+.verifyForm input,.verifyForm select,.verifyForm textarea{width:100%;box-sizing:border-box}
+.verifiedBadge{display:inline-block;background:#e9f5ef;color:#236a49;padding:4px 7px;border-radius:999px;font-size:9px;font-weight:900}
+html[data-dark="1"] .verifiedBadge{background:#15351f;color:#9de1b5}
+
+/* v0.15 — mobile-first visual refresh */
+:root{
+  --radius-xl:22px;
+  --radius-lg:17px;
+  --shadow-soft:0 10px 30px rgba(21,42,74,.08);
+  --phase-indigo:#6574d8;
+  --phase-violet:#8a6fd1;
+  --phase-teal:#3f9c92;
+  --phase-green:#5a9b72;
+  --phase-amber:#c88c3d;
+  --phase-rose:#c96b78;
+}
+body{font-size:16px;line-height:1.45}
+main{max-width:880px;margin:auto}
+header{padding-top:max(18px,env(safe-area-inset-top));}
+header h1{letter-spacing:-.035em}
+header p{line-height:1.3}
+nav{
+  backdrop-filter:blur(16px);
+  -webkit-backdrop-filter:blur(16px);
+  box-shadow:0 8px 22px rgba(0,0,0,.06);
+}
+nav button{min-height:48px;border-radius:15px;font-weight:850}
+.quickLegend{
+  display:flex;gap:7px;overflow:auto;padding:0 2px 10px;margin-top:-3px;
+  scrollbar-width:none
+}
+.quickLegend::-webkit-scrollbar{display:none}
+.ql{white-space:nowrap;border-radius:999px;padding:6px 10px;font-size:10px;font-weight:850;border:1px solid var(--line);background:var(--card)}
+.qlDose{color:var(--phase-indigo)}.qlStock{color:var(--phase-teal)}.qlDilute{color:var(--phase-violet)}.qlWarn{color:var(--phase-amber)}
+
+.card,.drug,.refCard,.planGroup{box-shadow:var(--shadow-soft)}
+.drug{
+  border-radius:var(--radius-lg);
+  position:relative;
+  overflow:hidden;
+  padding:15px;
+}
+.drug:before{
+  content:"";position:absolute;left:0;top:0;bottom:0;width:4px;background:var(--phase-indigo)
+}
+.drug h4{font-size:18px;letter-spacing:-.02em;margin-top:2px}
+.drug .meta{font-size:12px;line-height:1.35}
+.stockLine{
+  border-radius:12px;padding:9px 10px;margin-top:9px;
+  background:color-mix(in srgb,var(--phase-teal) 10%,transparent);
+}
+.dose{
+  border-radius:15px;
+  background:color-mix(in srgb,var(--phase-indigo) 10%,transparent);
+  padding:12px;margin-top:10px
+}
+.dose b{font-size:20px}
+.tags{gap:5px}
+.checked,.verify,.verifiedBadge{border-radius:999px}
+
+.planGroup{border-radius:var(--radius-xl);margin:12px 0}
+.planGroup>summary{
+  min-height:56px;padding:15px 16px;font-size:15px;
+  background:linear-gradient(90deg,color-mix(in srgb,var(--phase-indigo) 10%,transparent),transparent)
+}
+.planGroup:nth-of-type(2)>summary{background:linear-gradient(90deg,color-mix(in srgb,var(--phase-violet) 11%,transparent),transparent)}
+.planGroup:nth-of-type(3)>summary{background:linear-gradient(90deg,color-mix(in srgb,var(--phase-teal) 11%,transparent),transparent)}
+.planGroup:nth-of-type(4)>summary{background:linear-gradient(90deg,color-mix(in srgb,var(--phase-rose) 10%,transparent),transparent)}
+.planGroup:nth-of-type(5)>summary{background:linear-gradient(90deg,color-mix(in srgb,var(--phase-green) 10%,transparent),transparent)}
+.planGroup:nth-of-type(6)>summary{background:linear-gradient(90deg,color-mix(in srgb,var(--phase-amber) 11%,transparent),transparent)}
+.planGroup[open]>summary{border-bottom:1px solid var(--line)}
+.planGroupBody{padding:10px 11px 12px}
+
+.libraryTools{
+  border:1px solid var(--line);border-radius:16px;
+  box-shadow:0 7px 22px rgba(0,0,0,.07)
+}
+#search{min-height:48px;font-size:16px;border-radius:13px}
+.catFilters button{border-radius:999px;min-height:36px}
+.catFilters button.sel{box-shadow:0 4px 12px rgba(0,0,0,.10)}
+
+.drugActions{display:flex;gap:7px;flex-wrap:wrap}
+.drugActions button{min-height:40px;border-radius:12px}
+.hideBtn{opacity:.82}
+.diluteBtn{font-weight:850}
+
+.patientHero{
+  border-radius:var(--radius-xl);
+  background:linear-gradient(135deg,color-mix(in srgb,var(--phase-indigo) 13%,var(--card)),var(--card));
+}
+input,select,textarea,button{font-size:16px}
+input,select,textarea{min-height:46px;border-radius:13px}
+button{touch-action:manipulation}
+details>summary{touch-action:manipulation}
+
+@media(max-width:600px){
+  main{padding-left:12px;padding-right:12px}
+  h1{font-size:31px}
+  h2{font-size:25px}
+  .drug h4{font-size:19px}
+  .dose b{font-size:21px}
+  nav{gap:6px}
+  nav button{padding-left:11px;padding-right:11px}
+  .planGroup>summary{font-size:14px}
+  #library .libraryTools{top:70px}
+  #library .catFilters{top:130px}
+}
+
+.drug[data-phase="NMB"]:before{background:var(--phase-violet)}
+.drug[data-phase="Reversal"]:before{background:var(--phase-teal)}
+.drug[data-phase="PONV"]:before{background:var(--phase-rose)}
+.drug[data-phase="Post-op"]:before{background:var(--phase-green)}
+.drug[data-phase="Hemodynamics"]:before{background:var(--phase-amber)}
+.drug[data-phase="Emergency"]:before{background:var(--phase-rose)}
+.drug[data-phase="Local"]:before{background:var(--phase-teal)}
+.drug[data-phase="Obstetric"]:before{background:var(--phase-violet)}
+
+/* v0.16 Drug Library */
+.libraryHeader h2{margin:3px 0 2px;font-size:27px}.libraryHeader p{margin:0 0 10px;color:var(--muted);font-size:12px}
+.libraryLayout{display:grid;grid-template-columns:minmax(280px,1fr) minmax(320px,1.2fr);gap:12px;align-items:start}
+.libList{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:8px;box-shadow:var(--shadow-soft);position:relative}
+.alphaTitle{font-size:12px;font-weight:900;color:var(--blue);padding:10px 9px 5px}
+.libDrugRow{display:flex;align-items:center;gap:10px;width:100%;padding:11px 10px;border:0;border-bottom:1px solid var(--line);border-radius:0;background:transparent;text-align:left;color:var(--txt)}
+.libDrugRow:last-child{border-bottom:0}.libDrugRow:hover,.libDrugRow.active{background:var(--soft);border-radius:12px}
+.libIcon{width:34px;height:34px;display:grid;place-items:center;border-radius:11px;background:color-mix(in srgb,var(--blue) 11%,var(--card));font-size:17px;flex:none}
+.libText{min-width:0;flex:1}.libName{display:block;font-weight:850;font-size:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.libCat{display:block;color:var(--muted);font-size:11px;margin-top:2px}
+.libChevron{font-size:19px;color:var(--muted)}
+.drugDetail{position:sticky;top:142px;background:var(--card);border:1px solid var(--line);border-radius:20px;padding:15px;box-shadow:var(--shadow-soft);max-height:calc(100vh - 160px);overflow:auto}
+.emptyDetail{min-height:300px;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;color:var(--muted);gap:6px}.emptyDetailIcon{font-size:42px}.emptyDetail b{color:var(--txt)}
+.detailHero{display:flex;gap:12px;align-items:center;padding-bottom:12px;border-bottom:1px solid var(--line)}.detailIcon{width:54px;height:54px;display:grid;place-items:center;border-radius:16px;background:linear-gradient(135deg,#ff5572,#e83e60);font-size:27px}
+.detailHero h3{font-size:23px;margin:0}.detailHero p{margin:2px 0;color:var(--muted);font-size:12px}
+.detailGrid{display:grid;grid-template-columns:120px 1fr;gap:8px 10px;margin:13px 0;font-size:12px}.detailGrid span:nth-child(odd){color:var(--muted)}
+.categoryPill{display:inline-block;border-radius:999px;padding:5px 8px;background:#fff0f2;color:#b44759;font-size:10px;font-weight:800}
+.detailTabs{display:flex;gap:6px;overflow:auto;margin:12px 0}.detailTabs button{white-space:nowrap;font-size:10px;padding:8px 10px}.detailTabs button.sel{background:var(--blue);color:var(--bg)}
+.detailSection{background:var(--soft);border-radius:14px;padding:12px;margin:9px 0}.detailSection h4{margin:0 0 8px;font-size:15px}.detailDose{font-size:20px;font-weight:900;color:var(--blue)}
+.detailTable{width:100%;border-collapse:collapse;font-size:11px}.detailTable td{padding:7px 5px;border-bottom:1px solid var(--line);vertical-align:top}.detailTable td:first-child{color:var(--muted);width:44%}
+.detailWarn{background:#fff7df;color:#795817;border-radius:12px;padding:10px;font-size:11px;margin-top:8px}.detailRef{background:#f2ecff;color:#6247a5;border-radius:12px;padding:10px;font-size:11px;margin-top:8px}
+html[data-dark="1"] .detailWarn{background:#342a13;color:#ffd47a}html[data-dark="1"] .detailRef{background:#251d3b;color:#ccbaff}.detailClose{display:none}
+@media(max-width:760px){
+ .libraryLayout{grid-template-columns:1fr}.drugDetail{position:fixed;inset:0;z-index:50;border-radius:0;max-height:none;padding:18px;padding-top:max(18px,env(safe-area-inset-top));display:none}.drugDetail.open{display:block}.detailClose{display:block;float:right}
+}
+
+/* v0.17 Local Drug Library management */
+.libraryManage{display:flex;gap:7px;flex-wrap:wrap;margin:0 0 10px}
+.libraryManage button{font-size:11px;padding:8px 10px}
+.localBadge{display:inline-block;border-radius:999px;padding:4px 7px;background:#e7f5ff;color:#236a9a;font-size:9px;font-weight:900;margin-left:5px}
+html[data-dark="1"] .localBadge{background:#153047;color:#9ed2f2}
+.localDrugActions{display:flex;gap:7px;flex-wrap:wrap;margin-top:10px}
+.localDrugActions button{font-size:11px}
+.localFormGrid{display:grid;grid-template-columns:1fr 1fr;gap:9px}
+.localFormGrid .full{grid-column:1/-1}
+.localFormGrid label{display:block;font-size:11px;color:var(--muted)}
+.localFormGrid input,.localFormGrid select,.localFormGrid textarea{width:100%;margin-top:5px}
+@media(max-width:600px){.localFormGrid{grid-template-columns:1fr}}
+
+/* v0.18 classification overrides */
+.classifyActions{display:flex;gap:7px;flex-wrap:wrap;margin:10px 0}
+.classifyActions button{font-size:11px}
+.overrideBadge{display:inline-block;border-radius:999px;padding:4px 7px;background:#fff3dc;color:#9a6a17;font-size:9px;font-weight:900;margin-left:5px}
+html[data-dark="1"] .overrideBadge{background:#3b2c12;color:#ffd47a}
+.catManageItem{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--line)}
+
+/* v0.19 multi-category / multi-phase */
+.multiPills{display:flex;gap:5px;flex-wrap:wrap;margin-top:5px}
+.multiPill{display:inline-block;border-radius:999px;padding:4px 7px;background:var(--soft);color:var(--blue);font-size:9px;font-weight:850}
+.phaseRecord{border:1px solid var(--line);border-radius:13px;padding:10px;margin:8px 0;background:var(--card)}
+.phaseRecordHead{display:flex;justify-content:space-between;gap:8px;align-items:center}
+.phaseRecordHead b{font-size:13px}
+.phaseRecordActions{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
+.phaseRecordActions button{font-size:10px;padding:7px 8px}
+.checkGrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px;margin:8px 0}
+.checkItem{display:flex;align-items:center;gap:7px;padding:8px;border:1px solid var(--line);border-radius:10px;background:var(--soft)}
+.checkItem input{width:auto;min-height:auto;margin:0}
+@media(max-width:600px){.checkGrid{grid-template-columns:1fr}}
+
+/* v0.20 phase-specific Plan hide + larger dilution administration display */
+.drawBox{
+  padding:18px 16px;
+  border-width:3px;
+  text-align:center;
+  background:color-mix(in srgb,var(--blue) 7%,var(--card));
+}
+.drawBox small{
+  font-size:11px;
+  font-weight:900;
+  letter-spacing:.14em;
+}
+.drawBox b{
+  font-size:46px;
+  line-height:1.05;
+  font-weight:950;
+  letter-spacing:-.03em;
+  margin-top:7px;
+}
+.prepareBox{
+  padding:15px;
+}
+.prepareBox b{
+  font-size:23px;
+}
+#dDose{
+  font-size:22px;
+}
+#dStock{
+  font-size:19px;
+}
+@media(max-width:600px){
+  .drawBox b{font-size:50px}
+  .drawBox{padding:20px 14px}
+}
+
+/* v0.21 hidden-drug discoverability */
+.libDrugRow.isHidden{opacity:.72;background:color-mix(in srgb,var(--phase-amber) 7%,transparent)}
+.hiddenBadge{display:inline-block;border-radius:999px;padding:4px 7px;background:#fff3dc;color:#956411;font-size:9px;font-weight:900;margin-left:5px}
+html[data-dark="1"] .hiddenBadge{background:#3b2c12;color:#ffd47a}
+.libraryHint{font-size:10px;color:var(--muted);margin:4px 0 8px}
+
+/* v0.23 source verification */
+.sourceVerifiedBadge{display:inline-block;border-radius:999px;padding:4px 7px;background:#e8f7ee;color:#26704a;font-size:9px;font-weight:900}
+.thaiPendingBadge{display:inline-block;border-radius:999px;padding:4px 7px;background:#fff3dc;color:#996816;font-size:9px;font-weight:900}
+.conflictBadge{display:inline-block;border-radius:999px;padding:4px 7px;background:#fff0f2;color:#a13a4d;font-size:9px;font-weight:900}
+html[data-dark="1"] .sourceVerifiedBadge{background:#15351f;color:#9de1b5}
+html[data-dark="1"] .thaiPendingBadge{background:#3b2c12;color:#ffd47a}
+html[data-dark="1"] .conflictBadge{background:#321c22;color:#ffb8c2}
+.verificationBox{padding:10px;border-radius:12px;background:var(--soft);margin:8px 0;font-size:11px}
+
+/* v0.24 spreadsheet-based reference classification */
+.libCat{line-height:1.35}
+
+/* v0.25 canonical category cleanup */
+.canonicalNote{
+  background:var(--soft);
+  border:1px solid var(--line);
+  border-radius:13px;
+  padding:9px 10px;
+  font-size:11px;
+  color:var(--muted);
+  margin-bottom:8px;
+}
+
+/* v0.26 colorful clinical category system */
+:root{
+  --cat-nmb:#e35b64;
+  --cat-opioid:#4f8fd8;
+  --cat-induction:#8b6fd6;
+  --cat-antiemetic:#d978a5;
+  --cat-hemo:#e59b42;
+  --cat-local:#45a69a;
+  --cat-reversal:#53a66f;
+  --cat-obstetric:#b36dc4;
+  --cat-neuro:#6378d7;
+  --cat-hemostasis:#b66f52;
+  --cat-respiratory:#4da5b8;
+  --cat-premed:#7c84cf;
+  --cat-nonopioid:#67a86d;
+}
+.drugCardTheme{--drug-accent:var(--blue)}
+.drugCardTheme[data-cat*="Neuromuscular"]{--drug-accent:var(--cat-nmb)}
+.drugCardTheme[data-cat*="Opioid"]{--drug-accent:var(--cat-opioid)}
+.drugCardTheme[data-cat*="Induction"]{--drug-accent:var(--cat-induction)}
+.drugCardTheme[data-cat*="Antiemetic"]{--drug-accent:var(--cat-antiemetic)}
+.drugCardTheme[data-cat*="Vasoactive"],.drugCardTheme[data-cat*="Antihypertensive"]{--drug-accent:var(--cat-hemo)}
+.drugCardTheme[data-cat*="Local Anesthetic"]{--drug-accent:var(--cat-local)}
+.drugCardTheme[data-cat*="Reversal"]{--drug-accent:var(--cat-reversal)}
+.drugCardTheme[data-cat*="Obstetric"]{--drug-accent:var(--cat-obstetric)}
+.drugCardTheme[data-cat*="Neuroanesthesia"]{--drug-accent:var(--cat-neuro)}
+.drugCardTheme[data-cat*="Hemostatic"]{--drug-accent:var(--cat-hemostasis)}
+.drugCardTheme[data-cat*="Respiratory"]{--drug-accent:var(--cat-respiratory)}
+.drugCardTheme[data-cat*="Premedication"]{--drug-accent:var(--cat-premed)}
+.drugCardTheme[data-cat*="Non-Opioid"]{--drug-accent:var(--cat-nonopioid)}
+
+.drugCardTheme:before{background:var(--drug-accent)!important}
+.drugCardTheme .dose{background:color-mix(in srgb,var(--drug-accent) 11%,transparent)}
+.drugCardTheme .dose b{color:var(--drug-accent)}
+.drugCardTheme .categoryPill,.drugCardTheme .multiPill{background:color-mix(in srgb,var(--drug-accent) 12%,var(--card));color:var(--drug-accent)}
+
+.libIcon.cat-Neuromuscular{background:color-mix(in srgb,var(--cat-nmb) 15%,var(--card))}
+.libIcon.cat-Opioid{background:color-mix(in srgb,var(--cat-opioid) 15%,var(--card))}
+.libIcon.cat-Induction{background:color-mix(in srgb,var(--cat-induction) 15%,var(--card))}
+.libIcon.cat-Antiemetic{background:color-mix(in srgb,var(--cat-antiemetic) 15%,var(--card))}
+.libIcon.cat-Local{background:color-mix(in srgb,var(--cat-local) 15%,var(--card))}
+.libIcon.cat-Hemodynamic{background:color-mix(in srgb,var(--cat-hemo) 15%,var(--card))}
+
+.detailIcon.dynamic{
+  background:linear-gradient(135deg,color-mix(in srgb,var(--drug-accent) 90%,white),var(--drug-accent));
+}
+
+.patientMini span:nth-child(1){background:#ffe9ef}
+.patientMini span:nth-child(2){background:#ede9ff}
+.patientMini span:nth-child(3){background:#e6f4ff}
+.patientMini span:nth-child(4){background:#e8f7ee}
+html[data-dark="1"] .patientMini span{background:var(--soft)}
+
+.planGroup>summary span:first-child{font-weight:950}
+.planGroup[data-phase="NMB"]>summary{background:linear-gradient(90deg,color-mix(in srgb,var(--cat-nmb) 15%,transparent),transparent)}
+.planGroup[data-phase="Opioid"]>summary{background:linear-gradient(90deg,color-mix(in srgb,var(--cat-opioid) 15%,transparent),transparent)}
+.planGroup[data-phase="PONV"]>summary{background:linear-gradient(90deg,color-mix(in srgb,var(--cat-antiemetic) 15%,transparent),transparent)}
+.planGroup[data-phase="Hemodynamics"]>summary{background:linear-gradient(90deg,color-mix(in srgb,var(--cat-hemo) 15%,transparent),transparent)}
+
+/* v0.28 category-integrity cue */
+.integrityBadge{display:inline-block;padding:4px 7px;border-radius:999px;background:#e8f7ee;color:#26704a;font-size:9px;font-weight:900}
+
+/* v0.29 search/category interaction */
+.searchWrap{display:flex;align-items:center;gap:6px;flex:1;min-width:0}
+.searchWrap input{flex:1;min-width:0}
+#clearSearchBtn{min-width:42px;min-height:42px;border-radius:12px;font-weight:900}
+
+/* v0.30 Drug Library search layout fix */
+#library .libraryTools{
+  display:flex;
+  flex-direction:column;
+  gap:10px;
+  align-items:stretch;
+  padding:10px;
+  border-radius:18px;
+}
+#library .searchWrap{
+  display:flex;
+  width:100%;
+  min-width:0;
+  gap:8px;
+  align-items:center;
+}
+#library .searchWrap input{
+  flex:1 1 auto;
+  width:100%;
+  min-width:0;
+  min-height:54px;
+  font-size:17px;
+  padding:0 14px;
+  border-radius:15px;
+}
+#library #clearSearchBtn{
+  flex:0 0 48px;
+  width:48px;
+  min-width:48px;
+  min-height:48px;
+  border-radius:14px;
+  font-size:17px;
+}
+.libraryActionRow{
+  display:grid;
+  grid-template-columns:repeat(3,minmax(0,1fr));
+  gap:8px;
+  width:100%;
+}
+.libraryActionRow button{
+  width:100%;
+  min-width:0;
+  min-height:48px;
+  padding:9px 8px;
+  font-size:12px;
+  border-radius:14px;
+  white-space:nowrap;
+}
+@media(max-width:430px){
+  #library .libraryTools{padding:9px}
+  #library .searchWrap input{
+    min-height:56px;
+    font-size:17px;
+  }
+  .libraryActionRow{
+    grid-template-columns:repeat(3,minmax(0,1fr));
+  }
+  .libraryActionRow button{
+    font-size:11px;
+    padding:8px 5px;
+  }
+}
+
+/* v0.31 colorful clinical polish */
+:root{
+  --peach:#fff1ea;
+  --mint:#e8f7f1;
+  --sky:#eaf4ff;
+  --lav:#f2edff;
+  --rose:#fff0f3;
+  --butter:#fff7dc;
+}
+body{
+  background:
+    radial-gradient(circle at 12% 8%,rgba(112,175,255,.10),transparent 24%),
+    radial-gradient(circle at 90% 15%,rgba(191,134,255,.08),transparent 25%),
+    var(--bg);
+}
+header{
+  background:linear-gradient(135deg,color-mix(in srgb,var(--sky) 70%,var(--card)),color-mix(in srgb,var(--lav) 55%,var(--card)));
+  border-bottom:1px solid color-mix(in srgb,var(--blue) 15%,var(--line));
+}
+header h1{font-weight:950}
+header:before{
+  content:"💧";display:grid;place-items:center;position:absolute;left:18px;top:max(18px,env(safe-area-inset-top));
+  width:44px;height:44px;border-radius:14px;background:rgba(255,255,255,.55);font-size:24px
+}
+header h1,header p{margin-left:58px}
+
+nav button{
+  transition:.15s transform,.15s box-shadow;
+}
+nav button:active{transform:scale(.97)}
+nav button.active{
+  box-shadow:0 8px 20px color-mix(in srgb,var(--blue) 20%,transparent);
+}
+
+.libraryHeader{
+  padding:12px 14px;
+  border-radius:20px;
+  background:linear-gradient(135deg,var(--sky),var(--lav));
+  margin-bottom:10px;
+}
+.libraryActionRow button:nth-child(1){background:var(--mint)}
+.libraryActionRow button:nth-child(2){background:var(--butter)}
+.libraryActionRow button:nth-child(3){background:var(--rose)}
+html[data-dark="1"] .libraryActionRow button{background:var(--soft)}
+
+.planGroup{
+  overflow:hidden;
+}
+.planGroup>summary{
+  border-left:6px solid transparent;
+}
+.planGroup[data-phase="NMB"]>summary{border-left-color:var(--cat-nmb)}
+.planGroup[data-phase="Opioid"]>summary{border-left-color:var(--cat-opioid)}
+.planGroup[data-phase="PONV"]>summary{border-left-color:var(--cat-antiemetic)}
+.planGroup[data-phase="Hemodynamics"]>summary{border-left-color:var(--cat-hemo)}
+.planGroup[data-phase="Local"]>summary{border-left-color:var(--cat-local)}
+
+.drug{
+  transition:.15s transform,.15s box-shadow;
+}
+.drug:active{transform:scale(.995)}
+.stockLine{
+  display:flex;align-items:center;gap:6px;flex-wrap:wrap;
+}
+.miniStockBtn{
+  font-size:10px!important;
+  min-height:30px!important;
+  padding:5px 8px!important;
+  border-radius:9px!important;
+}
+.drawBox{
+  background:linear-gradient(135deg,color-mix(in srgb,var(--sky) 70%,var(--card)),color-mix(in srgb,var(--mint) 60%,var(--card)));
+  border-color:color-mix(in srgb,var(--blue) 45%,var(--line));
+}
+.detailSection{
+  border:1px solid color-mix(in srgb,var(--blue) 8%,var(--line));
+}
+.detailDose{
+  background:var(--sky);
+  border-radius:10px;
+  padding:3px 7px;
+}
+html[data-dark="1"] .detailDose{background:var(--soft)}
+
+/* v0.32 local verification */
+.phaseRecordActions{display:flex;gap:7px;flex-wrap:wrap;margin-top:8px}
+.phaseRecordActions button{font-size:10px;padding:7px 9px;border-radius:10px}
+.verifyForm .note{margin-bottom:10px}
+/* v0.33 cloud */
+.cloudCard{margin:12px 0}.cloudGrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.cloudCard label{display:flex;flex-direction:column;gap:5px;margin:8px 0}.cloudCard input,.cloudCard select,.cloudCard textarea{width:100%;box-sizing:border-box}@media(max-width:700px){.cloudGrid{grid-template-columns:1fr}}
