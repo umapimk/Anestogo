@@ -1207,4 +1207,4 @@ $("importDrugsFile").onchange=async e=>{
  e.target.value="";
 };
 
-if("serviceWorker"in navigator)navigator.serviceWorker.register("sw.js");renderCatFilters();renderLibraryCompact();sync();
+if("serviceWorker"in navigator)navigator.serviceWorker.register("./sw.js");renderCatFilters();renderLibraryCompact();sync();
