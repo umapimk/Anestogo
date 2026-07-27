@@ -570,3 +570,36 @@ html[data-dark="1"] .verifyDoseBadge{background:#3a2b0d;color:#ffd57a}
 @media(max-width:480px){.appBackBtn{min-width:68px!important;padding:0 8px!important}.appBackBtn span{font-size:11px}}
 /* v0.39 cloud evidence manager + local drug management */
 .cloudTabs{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin:14px 0}.cloudTabs button{padding:12px 8px;border-radius:14px;border:1px solid var(--line,#d9e2ef);font-weight:800}.cloudTabs button.active{background:#4b77a0;color:white}.cloudPane{display:none}.cloudPane.active{display:block}.cloudList{display:grid;gap:10px}.cloudRow{display:grid;gap:4px;padding:12px;border:1px solid #d9e2ef;border-radius:14px;background:rgba(255,255,255,.6)}.cloudRow span,.cloudRow small{opacity:.78}.roleBadge{display:inline-block;width:max-content;padding:4px 9px;border-radius:999px;background:#eef3f8;font-weight:800}.evidenceActions{display:flex;flex-wrap:wrap;gap:7px;margin-top:10px}.evidenceActions button{font-size:.82rem;padding:8px 10px;border-radius:10px}.dangerBtn{border-color:#d9a3a3!important;color:#9c2f2f!important}@media(max-width:700px){.cloudTabs{grid-template-columns:1fr 1fr}.evidenceActions button{flex:1 1 45%}}
+
+/* v0.40 local drug editing UX */
+.detailHeroMain{flex:1;min-width:0}
+.drugInlineActions{
+  display:flex;
+  gap:8px;
+  flex-wrap:wrap;
+  margin-top:10px;
+}
+.drugInlineActions button{
+  min-height:38px;
+  padding:8px 11px;
+  border-radius:11px;
+  font-size:11px;
+  font-weight:850;
+}
+.editDrugBtn{
+  background:#eaf4ff;
+  border-color:#b9d7f2!important;
+  color:#285f8c!important;
+}
+.deleteDrugBtn{
+  background:#fff0f1;
+  border-color:#efb6bc!important;
+  color:#a33745!important;
+}
+html[data-dark="1"] .editDrugBtn,
+html[data-dark="1"] .deleteDrugBtn{background:var(--soft)}
+.verifyForm select#ldCategory{
+  width:100%;
+  min-height:50px;
+  font-weight:750;
+}

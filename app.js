@@ -657,7 +657,7 @@ window.openLocalDrugEditor=(id=null)=>{
  </select></label>
  <label>Route<select id="ldRoute"><option ${d.route==="IV"?"selected":""}>IV</option><option ${d.route==="IM"?"selected":""}>IM</option><option ${d.route==="IV/IM"?"selected":""}>IV/IM</option></select></label>
  <label class="full">Indication / context<input id="ldContext" value="${d.context||""}"></label>
- <label>Subgroup<input id="ldSub" value="${d.sub||""}"></label>
+ <label>Drug class / Sub category<input id="ldSub" value="${d.sub||""}"></label>
  <label>Dose unit<input id="ldUnit" value="${d.unit||"mg/kg"}" placeholder="mg/kg, mcg/kg/min, mg"></label>
  <label>Dose min<input id="ldMin" type="number" step="any" value="${d.min??0}"></label>
  <label>Dose default<input id="ldDef" type="number" step="any" value="${d.def??0}"></label>
@@ -701,16 +701,71 @@ window.saveLocalDrug=(id,btn)=>{
   doseLocked:g("ldLocked").checked
  });
  let i=localDrugs.findIndex(x=>x.id===id);
+ let previous=i>=0?localDrugs[i]:null;
  if(i>=0)localDrugs[i]=o;else localDrugs.push(o);
- saveLocalDrugs();dlg.close();renderCatFilters();render();renderLibraryCompact();
+
+ // Edit Drug is authoritative for the primary category/phase of LOCAL drugs.
+ // Remove stale legacy classification data that could otherwise override the newly selected category.
+ if(classificationOverrides[id]){
+   classificationOverrides[id]={...classificationOverrides[id],category:o.category,phase:o.phase,sub:o.sub};
+ }
+ if(multiClassOverrides[id]){
+   let oldCats=Array.isArray(multiClassOverrides[id].categories)?multiClassOverrides[id].categories:[];
+   let oldPhases=Array.isArray(multiClassOverrides[id].phases)?multiClassOverrides[id].phases:[];
+   multiClassOverrides[id]={
+     ...multiClassOverrides[id],
+     categories:[o.category,...oldCats.filter(c=>canonicalizeCategory(c)!==o.category)],
+     phases:[o.phase,...oldPhases.filter(p=>p!==o.phase)],
+     sub:o.sub
+   };
+ }
+ localStorage.setItem("anesthClassificationOverrides",JSON.stringify(classificationOverrides||{}));
+ localStorage.setItem("anesthMultiClassOverrides",JSON.stringify(multiClassOverrides||{}));
+
+ saveLocalDrugs();
+ dlg.close();
+
+ // Refresh everything immediately without requiring leaving/re-entering the page.
+ renderCatFilters();
+ render();
+ renderLibraryCompact();
+
+ // Keep the user on the edited drug, even if the generic name changed.
+ const oldKey=previous?genericKey(previous.name):null;
+ const newKey=genericKey(o.name);
+ selectedDrugId=newKey;
+ setTimeout(()=>openGenericDrugDetail(encodeURIComponent(newKey),false),0);
 };
 window.deleteLocalDrug=id=>{
  if(!isLocalDrug(id))return;
- if(!confirm("Delete this local drug?"))return;
- localDrugs=localDrugs.filter(x=>x.id!==id);saveLocalDrugs();
- hiddenDrugs=hiddenDrugs.filter(x=>x!==id);localStorage.setItem("anesthHiddenDrugs",JSON.stringify(hiddenDrugs));
- if(selectedDrugId===id){selectedDrugId=null;$("drugDetail").className="drugDetail emptyDetail";$("drugDetail").innerHTML='<div class="emptyDetailIcon">💊</div><b>เลือกชื่อยาเพื่อดูรายละเอียด</b><span>Dose • Stock & Dilution • Contraindication • Reference</span>'}
- renderCatFilters();render();renderLibraryCompact();
+ let target=localDrugs.find(x=>x.id===id);
+ if(!target)return;
+ if(!confirm(`Delete ${target.name}?\n\nThis removes this LOCAL drug from this device.`))return;
+
+ const key=genericKey(target.name);
+ localDrugs=localDrugs.filter(x=>x.id!==id);
+ saveLocalDrugs();
+
+ hiddenDrugs=hiddenDrugs.filter(x=>x!==id);
+ delete classificationOverrides[id];
+ delete multiClassOverrides[id];
+ delete stockOverrides[id];
+ Object.keys(verifiedDoseRecords||{}).forEach(k=>{if(k.startsWith(id+"||"))delete verifiedDoseRecords[k]});
+
+ localStorage.setItem("anesthHiddenDrugs",JSON.stringify(hiddenDrugs));
+ localStorage.setItem("anesthClassificationOverrides",JSON.stringify(classificationOverrides||{}));
+ localStorage.setItem("anesthMultiClassOverrides",JSON.stringify(multiClassOverrides||{}));
+ saveStockOverrides();
+ saveVerifiedDoseRecords();
+
+ selectedDrugId=null;
+ const detail=$("drugDetail");
+ detail.className="drugDetail emptyDetail";
+ detail.innerHTML='<div class="emptyDetailIcon">💊</div><b>Select a drug to view details</b><span>Dose • Stock & Dilution • Contraindication • Reference</span>';
+
+ renderCatFilters();
+ render();
+ renderLibraryCompact();
 };
 
 
@@ -796,7 +851,16 @@ window.saveClassification=(id,btn)=>{
  multiClassOverrides[id]={categories:selectedCats,phases:selectedPhases,sub:dlg.querySelector("#clSub").value.trim(),records};
  selectedCats.forEach(c=>{if(!customCategories.includes(c))customCategories.push(c)});
  localStorage.setItem("anesthMultiClassOverrides",JSON.stringify(multiClassOverrides));
- saveClassifications();dlg.close();renderCatFilters();render();renderLibraryCompact();if(selectedDrugId===id)openDrugDetail(id);
+ saveClassifications();
+ dlg.close();
+ renderCatFilters();
+ render();
+ renderLibraryCompact();
+ let dd=findDrug(id);
+ if(dd){
+   selectedDrugId=genericKey(dd.name);
+   setTimeout(()=>openGenericDrugDetail(encodeURIComponent(selectedDrugId),false),0);
+ }
 };
 
 window.resetClassification=(id,btn)=>{
@@ -894,8 +958,8 @@ function representativeDrug(group){
  let rawCats=[...new Set(group.flatMap(integrityCategories))];
  let cats=primary?[primary,...rawCats.filter(c=>c!==primary)]:rawCats;
  let phases=[...new Set(group.flatMap(d=>d.phases||[d.phase]))];
- let cls=[...new Set(group.map(d=>d.drugClass).filter(Boolean))];
- return {...first,categories:cats,category:cats[0]||first.category,phases,drugClass:cls.join(" / ")||first.drugClass,categoryIntegrityFixed:!!primary};
+ let cls=[...new Set(group.map(d=>d.drugClass||d.sub).filter(Boolean))];
+ return {...first,categories:cats,category:cats[0]||first.category,phases,drugClass:cls.join(" / ")||first.drugClass||first.sub,categoryIntegrityFixed:!!primary};
 }
 function aggregateDoseRecords(group){
  let out=[];
@@ -985,7 +1049,16 @@ window.openGenericDrugDetail=(encodedKey,remember=true)=>{
 
  detail.innerHTML=`<button class="detailClose" onclick="closeDrugDetail()">✕</button>
  <div class="drugCardTheme" data-cat="${categories.join(" | ")}">
- <div class="detailHero"><div class="detailIcon dynamic">${drugIcon(d)}</div><div><h3>${d.name}</h3><p>${d.drugClass||d.context||""}</p></div></div>
+ <div class="detailHero">
+   <div class="detailIcon dynamic">${drugIcon(d)}</div>
+   <div class="detailHeroMain">
+     <h3>${d.name}</h3>
+     <p>${d.drugClass||d.sub||d.context||""}</p>
+     ${group.some(g=>g.localCustom)?`<div class="drugInlineActions">
+       ${group.filter(g=>g.localCustom).map(g=>`<button class="editDrugBtn" onclick="openLocalDrugEditor('${g.id}')">✏️ Edit Drug</button><button class="deleteDrugBtn" onclick="deleteLocalDrug('${g.id}')">🗑 Delete</button>`).join("")}
+     </div>`:""}
+   </div>
+ </div>
  <div class="detailGrid">
    <span>Categories</span><span><span class="multiPills">${categories.map(c=>`<span class="multiPill">${c}</span>`).join("")}</span></span>
    <span>Drug class</span><span>${d.drugClass||d.sub||"—"}</span>
@@ -995,7 +1068,6 @@ window.openGenericDrugDetail=(encodedKey,remember=true)=>{
  </div>
 
  <div class="classifyActions"><button onclick="openClassificationEditor('${group[0].id}')">🗂 Categories & Phases</button>
- ${group.filter(g=>g.localCustom).map(g=>`<button onclick="openLocalDrugEditor('${g.id}')">✏️ Edit Drug</button><button class="dangerBtn" onclick="deleteLocalDrug('${g.id}')">🗑 Delete Drug</button>`).join("")}
  ${group.some(g=>hiddenDrugs.includes(g.id))
  ?`<button onclick="unhideGenericInLibrary('${encodeURIComponent(key)}')">👁 Unhide in Drug Library</button>`
  :`<button onclick="hideGenericInLibrary('${encodeURIComponent(key)}')">🙈 Hide in Drug Library</button>`}
