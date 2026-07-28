@@ -83,24 +83,32 @@ function candidateConflictInfo(r){
   let units=[...new Set(vars.map(v=>normUnit(v.dose_unit)).filter(Boolean))];
   let weights=[...new Set(vars.map(v=>String(v.dosing_weight||'').toUpperCase()).filter(Boolean))];
   let phases=[...new Set(vars.map(v=>canonicalEvidencePhase(v.phase||p.evidence_context)).filter(x=>x!=='unspecified'))];
+
   if(units.length>1)reasons.push(`Different dose units: ${units.join(', ')}`);
   if(weights.length>1)reasons.push(`Different weight bases: ${weights.join(', ')}`);
   if(phases.length>1)reasons.push(`Different phases: ${phases.join(', ')}`);
-  if(vars.length>1){
-    let mins=vars.map(v=>v.dose_min).filter(v=>v!=null);
-    let maxs=vars.map(v=>v.dose_max).filter(v=>v!=null);
-    if(mins.length>1&&!mins.every(v=>numericClose(v,mins[0])))reasons.push('Different minimum doses');
-    if(maxs.length>1&&!maxs.every(v=>numericClose(v,maxs[0])))reasons.push('Different maximum doses');
-  }
+
+  let ranges=[...new Set(vars.map(v=>`${v.dose_min??''}|${v.dose_default??''}|${v.dose_max??''}|${normUnit(v.dose_unit)}`))];
+  if(ranges.length>1)reasons.push('Multiple dose ranges found in the same drug/phase');
+
   return {conflict:reasons.length>0,reasons};
 }
 function reviewEligibility(r){
   let p=r.proposed_changes||{},conf=candidateConflictInfo(r);
   let confidence=Number(p.confidence_score||0);
   let structured=Object.keys(compatibleChange({},p)).length>0;
-  let eligible=!!r.dose_record_id&&!conf.conflict&&structured&&confidence>=80&&
+  let cloudReady=(cloudDrugRows||[]).length>0&&(cloudDoseRows||[]).length>0;
+  let eligible=cloudReady&&!!r.dose_record_id&&!conf.conflict&&structured&&confidence>=80&&
     (r.status==='review_required'||r.status==='extracted');
-  return {eligible,confidence,conflict:conf.conflict,reasons:conf.reasons,structured};
+
+  return {
+    eligible,confidence,conflict:conf.conflict,reasons:conf.reasons,structured,cloudReady,
+    blockedReason:!cloudReady?'Cloud drug/dose mapping is not available.':
+      !r.dose_record_id?'A specific Cloud dose record is not mapped.':
+      conf.conflict?'Resolve conflict first.':
+      confidence<80?'Confidence is below 80%.':
+      !structured?'No structured medication field is available.':''
+  };
 }
 function evidenceQueueChanged(id,checked){
   if(checked)selectedEvidenceIds.add(id);else selectedEvidenceIds.delete(id);
@@ -229,7 +237,7 @@ function renderReconciliations(rows,refs,files){
         ${eligibility.eligible?
           `<button class="approveBtn" type="button" onclick="cloudApproveReconciliation('${r.id}')">✓ Review & approve</button>
            <button class="rejectBtn" type="button" onclick="cloudRejectReconciliation('${r.id}')">✕ Reject</button>`:
-          `<button type="button" disabled>${eligibility.conflict?'Resolve conflict first':'Cloud mapping required'}</button>
+          `<button type="button" disabled>${esc(eligibility.blockedReason||'Cloud mapping required')}</button>
            ${(r.status==='review_required'||r.status==='extracted')?`<button class="rejectBtn" type="button" onclick="cloudRejectReconciliation('${r.id}')">✕ Reject</button>`:''}`}
       </div>
     </div>`;
@@ -583,16 +591,48 @@ function cloudDrugForMatcherDrug(d){
   return (cloudDrugRows||[]).find(x=>matcherKey(x)===key)||null;
 }
 async function ensureCloudDoseMap(){
-  if((cloudDrugRows||[]).length&&(cloudDoseRows||[]).length)return;
+  matcherLoadStatus.cloudDrugError=null;
+  matcherLoadStatus.cloudDoseError=null;
+
   try{
-    let rows=await api('/rest/v1/dose_records?select=*,drugs(id,generic_name,display_name,active)&order=created_at.asc');
-    if(Array.isArray(rows)){
-      cloudDoseRows=rows.map(r=>{let x={...r};delete x.drugs;return x});
-      let map=new Map((cloudDrugRows||[]).map(d=>[d.id,d]));
-      for(let r of rows)if(r.drugs?.id)map.set(r.drugs.id,r.drugs);
-      cloudDrugRows=[...map.values()];
+    let drugs=await api('/rest/v1/drugs?select=id,generic_name,display_name,active&order=generic_name.asc');
+    if(Array.isArray(drugs)){
+      cloudDrugRows=drugs;
+      matcherLoadStatus.cloudCount=drugs.length;
+      matcherLoadStatus.cloudDrugQuery='OK';
     }
-  }catch(e){matcherLoadStatus.doseJoinError=e.message||String(e)}
+  }catch(e){
+    matcherLoadStatus.cloudDrugQuery='FAILED';
+    matcherLoadStatus.cloudDrugError=e.message||String(e);
+  }
+
+  try{
+    let doses=await api('/rest/v1/dose_records?select=*&order=created_at.asc');
+    if(Array.isArray(doses)){
+      cloudDoseRows=doses;
+      matcherLoadStatus.cloudDoseCount=doses.length;
+      matcherLoadStatus.cloudDoseQuery='OK';
+    }
+  }catch(e){
+    matcherLoadStatus.cloudDoseQuery='FAILED';
+    matcherLoadStatus.cloudDoseError=e.message||String(e);
+  }
+
+  if((cloudDrugRows||[]).length===0 && (cloudDoseRows||[]).length){
+    let ids=[...new Set(cloudDoseRows.map(r=>r.drug_id).filter(Boolean))];
+    if(ids.length){
+      try{
+        let drugs=await api(`/rest/v1/drugs?select=id,generic_name,display_name,active&id=in.(${ids.join(',')})`);
+        if(Array.isArray(drugs)){
+          cloudDrugRows=drugs;
+          matcherLoadStatus.cloudCount=drugs.length;
+          matcherLoadStatus.cloudDrugRecovery='dose_record_ids';
+        }
+      }catch(e){
+        matcherLoadStatus.cloudDrugRecoveryError=e.message||String(e);
+      }
+    }
+  }
 }
 function tableAnchors(page){
   let a={induction:null,maintenance:null};
@@ -604,8 +644,20 @@ function tableAnchors(page){
   return a;
 }
 function nearbyDrugRows(page,idx,allDrugLines){
-  let rows=page.lineRows||[],next=allDrugLines.filter(x=>x>idx).sort((a,b)=>a-b)[0];
-  return rows.slice(idx,Math.min(rows.length,next!=null?next:idx+4));
+  let rows=page.lineRows||[];
+  let starts=[...new Set((allDrugLines||[]).filter(Number.isInteger))].sort((a,b)=>a-b);
+  let next=starts.find(x=>x>idx);
+  let hardEnd=next!=null?next:rows.length;
+  let softEnd=hardEnd;
+
+  for(let i=idx+1;i<hardEnd;i++){
+    let s=normalizedSearch(rows[i]?.text||'');
+    if(/^(?:induction agents|neuromuscular|opioids|analgesics|reversal|local anesthetics|maintenance|sedation|emergency)\b/.test(s)){
+      softEnd=i;break;
+    }
+  }
+
+  return rows.slice(idx,Math.max(idx+1,Math.min(softEnd,idx+3)));
 }
 function contextBefore(page,idx){
   for(let i=Math.max(0,idx-8);i<=idx;i++){
@@ -626,37 +678,84 @@ function candidatesInCell(text,ctx){
   else for(let w of weights)out.push({proposed:{dosing_weight:w.basis,dosing_weight_formula:w.formula},ctx:ctx||inferEvidenceContext(text,w.idx),raw:w.basis,text});
   return out;
 }
-function parseDrugTableRow(page,hit,allDrugLines){
+function samePhysicalRowCandidates(page,hit){
   if(!Number.isInteger(hit.lineIndex))return [];
-  let rows=nearbyDrugRows(page,hit.lineIndex,allDrugLines),a=tableAnchors(page),out=[];
+  let row=(page.lineRows||[])[hit.lineIndex];
+  if(!row)return [];
+  let a=tableAnchors(page),items=row.items||[],out=[];
+
   if(a.induction!=null&&a.maintenance!=null&&a.maintenance>a.induction){
-    let ind=[],maint=[];
-    for(let row of rows)for(let it of row.items||[]){
-      if(it.x>=a.maintenance-10)maint.push(it.s);
-      else if(it.x>=a.induction-10)ind.push(it.s);
+    let induction=[],maintenance=[];
+    for(let it of items){
+      if(it.x>=a.maintenance-10)maintenance.push(it.s);
+      else if(it.x>=a.induction-10)induction.push(it.s);
     }
-    for(let c of candidatesInCell(ind.join(' '),'Induction / Bolus'))out.push(c);
-    for(let c of candidatesInCell(maint.join(' '),'Maintenance / Infusion'))out.push(c);
+    for(let c of candidatesInCell(induction.join(' '),'Induction / Bolus'))out.push(c);
+    for(let c of candidatesInCell(maintenance.join(' '),'Maintenance / Infusion'))out.push(c);
   }
-  if(!out.length){
-    let t=rows.map(r=>r.text).join(' | ');
-    out=candidatesInCell(t,contextBefore(page,hit.lineIndex));
-  }
+
+  if(!out.length)out=candidatesInCell(row.text||'',contextBefore(page,hit.lineIndex));
   return out;
 }
+function filterImplausibleCandidates(list){
+  return (list||[]).filter(c=>{
+    let p=c.proposed||{};
+    if(p.dose_min!=null&&Math.abs(Number(p.dose_min))>50000)return false;
+    if(p.dose_max!=null&&Math.abs(Number(p.dose_max))>50000)return false;
+    return p.dose_min!=null||p.dose_default!=null||p.dose_max!=null||p.dosing_weight;
+  });
+}
+function parseDrugTableRow(page,hit,allDrugLines){
+  if(!Number.isInteger(hit.lineIndex))return [];
+
+  let out=filterImplausibleCandidates(samePhysicalRowCandidates(page,hit));
+  if(out.length)return out;
+
+  let rows=nearbyDrugRows(page,hit.lineIndex,allDrugLines),a=tableAnchors(page);
+  if(!rows.length)return [];
+
+  if(a.induction!=null&&a.maintenance!=null&&a.maintenance>a.induction){
+    let induction=[],maintenance=[];
+    for(let row of rows){
+      for(let it of row.items||[]){
+        if(it.x>=a.maintenance-10)maintenance.push(it.s);
+        else if(it.x>=a.induction-10)induction.push(it.s);
+      }
+    }
+    out=[];
+    for(let c of candidatesInCell(induction.join(' '),'Induction / Bolus'))out.push(c);
+    for(let c of candidatesInCell(maintenance.join(' '),'Maintenance / Infusion'))out.push(c);
+    out=filterImplausibleCandidates(out);
+    if(out.length)return out;
+  }
+
+  return filterImplausibleCandidates(
+    candidatesInCell(rows.map(r=>r.text).join(' | '),contextBefore(page,hit.lineIndex))
+  );
+}
 function matchSpecificDose(drug,excerpt,ctx){
-  let cd=cloudDrugForMatcherDrug(drug);if(!cd)return null;
-  let rs=(cloudDoseRows||[]).filter(r=>r.drug_id===cd.id);if(!rs.length)return null;
-  let c=normalizedSearch(ctx),s=normalizedSearch(excerpt);
+  let cd=cloudDrugForMatcherDrug(drug);
+  if(!cd)return null;
+
+  let rs=(cloudDoseRows||[]).filter(r=>r.drug_id===cd.id);
+  if(!rs.length)return null;
+
+  let c=canonicalEvidencePhase(ctx),s=normalizedSearch(excerpt||'');
   let scored=rs.map(r=>{
-    let score=0,txt=normalizedSearch((r.phase||'')+' '+(r.indication||''));
-    if(/induction|bolus/.test(c)&&/induction|bolus/.test(txt))score+=6;
-    if(/maintenance|infusion/.test(c)&&/maintenance|infusion/.test(txt))score+=6;
-    if(/emergency|crisis/.test(c)&&/emergency|crisis/.test(txt))score+=6;
-    for(let w of txt.split(' ').filter(x=>x.length>3))if(s.includes(w))score++;
+    let rp=canonicalEvidencePhase(`${r.phase||''} ${r.indication||''}`);
+    let score=0;
+    if(c!=='unspecified'&&rp===c)score+=10;
+    else if(c!=='unspecified'&&rp!=='unspecified'&&rp!==c)score-=10;
+
+    for(let t of [r.indication,r.route,r.population].filter(Boolean)){
+      for(let w of normalizedSearch(t).split(' ').filter(x=>x.length>3)){
+        if(s.includes(w))score++;
+      }
+    }
     return {r,score};
-  }).sort((x,y)=>y.score-x.score);
-  return scored[0]?.score>0?scored[0].r:(rs.length===1?rs[0]:null);
+  }).sort((a,b)=>b.score-a.score);
+
+  return scored[0]?.score>=4?scored[0].r:null;
 }
 function shortExcerpt(name,ctx,text,raw){
   let s=normalizeEvidenceText(text),pos=s.toLowerCase().indexOf(String(raw||name||'').toLowerCase());
@@ -750,6 +849,11 @@ function showExtractionDiagnostic(stats){
      <div>Cloud medication query: <b>${esc(stats.cloudQueryStatus||'unknown')}</b></div>
      ${stats.cloudQueryError?`<div class="diagError">Cloud query error: <b>${esc(stats.cloudQueryError)}</b></div>`:''}${stats.doseJoinError?`<div class="diagError">Dose-record join error: <b>${esc(stats.doseJoinError)}</b></div>`:''}
      <div>Cloud drugs available: <b>${Number(stats.cloudDrugCount||0).toLocaleString()}</b></div>
+     <div>Cloud dose records available: <b>${Number(matcherLoadStatus.cloudDoseCount||0).toLocaleString()}</b></div>
+     <div>Cloud drug query: <b>${esc(matcherLoadStatus.cloudDrugQuery||'not attempted')}</b></div>
+     <div>Cloud dose query: <b>${esc(matcherLoadStatus.cloudDoseQuery||'not attempted')}</b></div>
+     ${matcherLoadStatus.cloudDrugError?`<div class="diagError">Cloud drug error: <b>${esc(matcherLoadStatus.cloudDrugError)}</b></div>`:''}
+     ${matcherLoadStatus.cloudDoseError?`<div class="diagError">Cloud dose error: <b>${esc(matcherLoadStatus.cloudDoseError)}</b></div>`:''}
      <div>Built-in/local fallback drugs: <b>${Number(stats.appDrugCount||0).toLocaleString()}</b></div>
      <div>Built-in/local dose records available: <b>${Number(appEvidenceDoseRows.length||0).toLocaleString()}</b></div>
      <div>Total unique matcher drugs: <b>${Number(stats.combinedDrugCount||0).toLocaleString()}</b></div>
@@ -857,152 +961,38 @@ window.cloudApproveReconciliation=async id=>{
 };
 window.cloudRejectReconciliation=async id=>{
   if(!token())return alert('Sign in first.');
-  let reason=prompt('Reason for rejection (optional):')||null;
+
+  let r=(cloudReconciliations||[]).find(x=>x.id===id);
+  if(!r)return alert('Reconciliation item not found.');
+
+  let drug=r.matched_drug_name||'this evidence item';
+  let phase=r.proposed_changes?.evidence_context||r.proposed_changes?.phase||'unspecified phase';
+
+  // Important: confirmation happens before any UI or database mutation.
+  let confirmed=confirm(
+    `Reject evidence candidate?\n\n${drug} — ${phase}\n\n` +
+    `This will mark only this reconciliation candidate as rejected. ` +
+    `It will not delete the evidence file or change the medication dose record.`
+  );
+  if(!confirmed)return;
+
   try{
     await api(`/rest/v1/evidence_reconciliations?id=eq.${encodeURIComponent(id)}`,{
-      method:'PATCH',body:JSON.stringify({status:'rejected',reviewed_by:session.user.id,reviewed_at:new Date().toISOString(),review_notes:reason})
+      method:'PATCH',
+      body:JSON.stringify({
+        status:'rejected',
+        reviewed_by:session.user.id,
+        reviewed_at:new Date().toISOString(),
+        review_notes:'Rejected by clinician in v0.57.'
+      })
     });
+
+    selectedEvidenceIds?.delete?.(id);
     await refresh();
-  }catch(e){alert('Reject failed: '+e.message)}
+  }catch(e){
+    alert('Reject failed: '+e.message);
+  }
 };
-
-async function refresh(){
-  if(!token()){setMsg('Sign in first.');return}
-  try{
-    setMsg('Syncing…');
-    let [drugs,doses,refs,files,vs,profiles,recs]=await Promise.all([
-      api('/rest/v1/drugs?select=*&order=generic_name.asc'),
-      api('/rest/v1/dose_records?select=*&order=created_at.asc'),
-      api('/rest/v1/references?select=*&order=created_at.desc'),
-      api('/rest/v1/reference_files?select=*&order=created_at.desc'),
-      api('/rest/v1/verifications?select=*&order=created_at.desc'),
-      api('/rest/v1/profiles?select=id,display_name,role&order=created_at.asc'),
-      api('/rest/v1/evidence_reconciliations?select=*&order=created_at.desc')
-    ]);
-    cloudDrugRows=drugs||[]; cloudDoseRows=doses||[]; cloudReferences=refs||[];
-    cloudEvidenceFiles=files||[]; cloudReconciliations=recs||[]; cloudProfiles=profiles||[];
-    window.setCloudLibrary?.(mapCloud((drugs||[]).filter(d=>d.active!==false),doses));
-    renderRefs(refs); renderFiles(files,refs); renderVerifications(vs,refs); renderUsers(profiles);
-    fillReconcileFileSelect(files,refs);
-    renderReconciliations(recs,refs,files);
-    let me=profiles.find(x=>x.id===session.user.id),role=me?.role||'viewer';
-    $c('cloudStatus').textContent='Connected • '+role;
-    $c('cloudUserText').textContent=`${session.user.email} • ${role}`;
-    setMsg(`Cloud ready: ${(drugs||[]).filter(d=>d.active!==false).length} active drugs • ${(refs||[]).length} references • ${(files||[]).length} files • ${(recs||[]).length} reconciliation items.`);
-  }catch(e){
-    setMsg('Sync failed: '+e.message);
-    if(String(e.message).includes('evidence_reconciliations'))setMsg('Cloud schema needs the v0.43/v0.44 reconciliation SQL migration before reconciliation can run.');
-  }
-}
-
-function fmtBytes(n){
-  n=Number(n||0);
-  if(n<1024)return `${n} B`;
-  if(n<1024*1024)return `${(n/1024).toFixed(1)} KB`;
-  return `${(n/1024/1024).toFixed(2)} MB`;
-}
-function showUploadDiagnostic(info){
-  let el=$c('uploadDiagnostic'); if(!el)return;
-  let rows=[
-    ['Selected file',fmtBytes(info.selected)],
-    ['Binary payload',fmtBytes(info.payload)],
-    ['Storage path',info.path||'—'],
-    ['Upload response',info.uploadStatus||'—'],
-    ['Downloaded verification',info.downloaded==null?'—':fmtBytes(info.downloaded)],
-    ['Verification',info.ok?'PASS ✓':'NOT COMPLETE']
-  ];
-  el.innerHTML='<b>Evidence upload diagnostic</b>'+rows.map(x=>`<div><span>${esc(x[0])}</span><strong>${esc(x[1])}</strong></div>`).join('');
-  el.hidden=false;
-}
-async function uploadEvidenceBinary(file,path){
-  let ab=await file.arrayBuffer();
-  if(!ab.byteLength)throw new Error('The selected file produced an empty binary payload. Re-select the original file from Files/Downloads, not a placeholder.');
-  if(file.size && ab.byteLength!==file.size)throw new Error(`Browser file-size mismatch: selected ${file.size} bytes but readable payload is ${ab.byteLength} bytes.`);
-
-  const encoded=String(path).split('/').map(encodeURIComponent).join('/');
-  let r=await fetch(`${SUPABASE_URL}/storage/v1/object/reference-files/${encoded}`,{
-    method:'POST',
-    headers:{
-      apikey:SUPABASE_KEY,
-      Authorization:`Bearer ${token()}`,
-      'Content-Type':file.type||'application/octet-stream',
-      'x-upsert':'false',
-      'cache-control':'3600'
-    },
-    body:ab
-  });
-  let responseText=await r.text();
-  if(!r.ok)throw new Error(`Evidence upload failed (${r.status}): ${responseText}`);
-  return {payloadBytes:ab.byteLength,status:r.status,responseText};
-}
-
-async function saveReference(){
-  if(!token()){alert('Sign in first.');return}
-  let title=$c('refTitle').value.trim(); if(!title){alert('Reference title is required.');return}
-  let file=$c('refFile').files?.[0], fileHash=null;
-  let diag={selected:file?.size||0,payload:0,path:'',uploadStatus:'',downloaded:null,ok:false};
-  if($c('uploadDiagnostic'))$c('uploadDiagnostic').hidden=true;
-  try{
-    $c('refCloudResult').textContent='Validating selected evidence…';
-    if(file){
-      if(!file.size)throw new Error('Selected evidence file is 0 bytes. Choose the original file again.');
-      // Force the browser to read the bytes now. This catches iCloud/File-provider placeholders before creating Reference metadata.
-      let probe=await file.arrayBuffer();
-      diag.payload=probe.byteLength;
-      showUploadDiagnostic(diag);
-      if(!probe.byteLength)throw new Error('The selected evidence file has a name/metadata but no readable bytes. Download the PDF fully to the device, then choose it again.');
-      if(probe.byteLength!==file.size)throw new Error(`Selected file reports ${file.size} bytes but Safari provided ${probe.byteLength} bytes.`);
-      fileHash=await sha256Hex(new Blob([probe],{type:file.type||'application/octet-stream'}));
-      let dup=await api(`/rest/v1/reference_files?select=id,original_filename,file_size_bytes,reference_id&file_hash=eq.${encodeURIComponent(fileHash)}&limit=1`);
-      if(dup?.length)throw new Error(`This exact evidence file is already stored (${dup[0].original_filename||'evidence'}). Duplicate upload was blocked.`);
-    }
-
-    $c('refCloudResult').textContent='Saving reference…';
-    let body={title,organization:$c('refOrg').value||null,edition:$c('refEdition').value||null,publication_date:$c('refDate').value||null,page_reference:$c('refPage').value||null,table_reference:$c('refTable').value||null,section_reference:$c('refSection').value||null,url:$c('refUrl').value||null,notes:$c('refNotes').value||null,source_type:$c('refType').value,created_by:session.user.id};
-    let refs=await api('/rest/v1/references',{method:'POST',headers:{'Prefer':'return=representation'},body:JSON.stringify(body)}),ref=refs[0];
-
-    if(file){
-      let safe=(file.name||'evidence').replace(/[^a-zA-Z0-9._-]/g,'_');
-      let path=`${ref.id}/${crypto.randomUUID()}-${safe}`;
-      diag.path=path;
-      $c('refCloudResult').textContent='Uploading evidence bytes…';
-      let up=await uploadEvidenceBinary(file,path);
-      diag.payload=up.payloadBytes; diag.uploadStatus=String(up.status); showUploadDiagnostic(diag);
-
-      $c('refCloudResult').textContent='Verifying uploaded object…';
-      let verifyRow={storage_path:path,file_size_bytes:file.size,mime_type:file.type||null,original_filename:file.name};
-      let downloaded=await fetchEvidenceFile(verifyRow);
-      diag.downloaded=downloaded.size;
-      if(downloaded.size!==up.payloadBytes){
-        showUploadDiagnostic(diag);
-        // Best-effort cleanup: do not leave a broken object + misleading metadata.
-        try{
-          let encoded=path.split('/').map(encodeURIComponent).join('/');
-          await fetch(`${SUPABASE_URL}/storage/v1/object/reference-files/${encoded}`,{method:'DELETE',headers:{apikey:SUPABASE_KEY,Authorization:`Bearer ${token()}`}});
-        }catch{}
-        throw new Error(`Upload verification failed: binary payload ${up.payloadBytes} bytes, downloaded ${downloaded.size} bytes. Broken Storage object was not registered as Evidence.`);
-      }
-      let first=new Uint8Array(await downloaded.slice(0,5).arrayBuffer());
-      let header=String.fromCharCode(...first);
-      if((file.type==='application/pdf'||/\.pdf$/i.test(file.name)) && header!=='%PDF-'){
-        showUploadDiagnostic(diag);
-        throw new Error(`Uploaded object is not a valid PDF header (received ${JSON.stringify(header)}).`);
-      }
-      diag.ok=true; showUploadDiagnostic(diag);
-      await api('/rest/v1/reference_files',{method:'POST',body:JSON.stringify({reference_id:ref.id,storage_path:path,original_filename:file.name,mime_type:file.type||null,uploaded_by:session.user.id,file_size_bytes:downloaded.size,file_hash:fileHash})});
-    }
-
-    if(selectedDoseId)await api('/rest/v1/verifications',{method:'POST',body:JSON.stringify({dose_record_id:selectedDoseId,reference_id:ref.id,verification_type:'source_verified',decision:'pending',notes:'Reference linked; clinical verification pending.'})});
-    $c('refCloudResult').textContent=file
-      ? 'Saved. Binary upload and download verification passed. Next: Reconciliation → Extract & Compare.'
-      : 'Reference saved. No evidence file was attached.';
-    await refresh();
-  }catch(e){
-    showUploadDiagnostic(diag);
-    $c('refCloudResult').textContent='Save failed: '+e.message;
-  }
-}
-async function createPending(){if(!selectedDoseId){alert('Open a cloud dose record in Drug Library and tap Verify first.');return}try{await api('/rest/v1/verifications',{method:'POST',body:JSON.stringify({dose_record_id:selectedDoseId,verification_type:'local_verified',decision:'pending',notes:'Pending clinician/institution review.'})});await refresh()}catch(e){alert('Could not create verification: '+e.message)}}
 window.cloudOpenEvidence=async(path,name)=>{if(!token())return alert('Sign in first.');try{let b=await fetchEvidenceFile({storage_path:path,original_filename:name});let u=URL.createObjectURL(b);window.open(u,'_blank');setTimeout(()=>URL.revokeObjectURL(u),60000)}catch(e){alert('Open evidence failed: '+e.message)}};
 window.cloudDeleteEvidence=async id=>{
   if(!token())return alert('Sign in first.');
@@ -1035,3 +1025,210 @@ window.cloudSetDrugActive=async function(id,active){
   if(error) throw error;
   return data;
 };
+
+
+/* v0.58 Evidence Intake Hub */
+let intakeRows=[],intakeHeaders=[],intakeCandidates=[];
+
+function intakeShowMode(mode){
+  document.querySelectorAll('[data-intakemode]').forEach(b=>b.classList.toggle('active',b.dataset.intakemode===mode));
+  document.querySelectorAll('[data-intakepanel]').forEach(p=>p.hidden=p.dataset.intakepanel!==mode);
+}
+document.addEventListener('click',e=>{
+  let b=e.target.closest?.('[data-intakemode]');
+  if(b)intakeShowMode(b.dataset.intakemode);
+});
+$c('openManualDrugAdd')?.addEventListener('click',()=>{
+  document.querySelector('[data-tab="library"]')?.click();
+  window.scrollTo({top:0,behavior:'smooth'});
+});
+
+function parseCsvLine(line){
+  let out=[],cur='',q=false;
+  for(let i=0;i<line.length;i++){
+    let ch=line[i];
+    if(ch==='"'){
+      if(q&&line[i+1]==='"'){cur+='"';i++}else q=!q;
+    }else if(ch===','&&!q){out.push(cur);cur=''}else cur+=ch;
+  }
+  out.push(cur);return out;
+}
+function parseCsvText(text){
+  let lines=String(text||'').replace(/\r/g,'').split('\n').filter(x=>x.trim());
+  if(!lines.length)return {headers:[],rows:[]};
+  let headers=parseCsvLine(lines[0]).map(x=>x.trim());
+  let rows=lines.slice(1).map(line=>{
+    let vals=parseCsvLine(line),o={};headers.forEach((h,i)=>o[h]=vals[i]??'');return o;
+  });
+  return {headers,rows};
+}
+function intakeFieldOptions(){
+  return [['','Ignore'],['generic_name','Generic name'],['display_name','Display name'],
+  ['primary_category','Primary category'],['drug_class','Drug class'],['phase','Phase'],
+  ['indication','Indication'],['route','Route'],['population','Population'],
+  ['dose_min','Dose min'],['dose_default','Dose default'],['dose_max','Dose max'],
+  ['dose_unit','Dose unit'],['max_dose','Maximum dose'],['max_dose_unit','Maximum dose unit'],
+  ['stock_concentration','Stock concentration'],['stock_unit','Stock unit'],
+  ['dosing_weight','Dosing weight'],['dosing_weight_formula','Weight formula'],
+  ['dilution_note','Dilution note'],['administration_note','Administration note'],
+  ['reference','Reference / source']];
+}
+function guessIntakeField(h){
+  h=String(h||'').toLowerCase().replace(/[^a-z0-9ก-๙]+/g,' ');
+  let tests=[['generic_name',/generic|drug name|medication|ชื่อสามัญ/],['display_name',/display|brand|trade|ชื่อการค้า/],
+  ['primary_category',/category|หมวด/],['drug_class',/drug class|class|กลุ่มยา/],['phase',/phase|ช่วง/],
+  ['indication',/indication|context|ข้อบ่งใช้/],['route',/route|ทางให้ยา/],['population',/population|ประชากร/],
+  ['dose_min',/dose min|min dose/],['dose_default',/dose default|usual dose/],['dose_max',/dose max|max dose range/],
+  ['dose_unit',/dose unit|unit/],['max_dose',/^max dose$|maximum dose/],['max_dose_unit',/max dose unit/],
+  ['stock_concentration',/stock concentration|concentration|ความเข้มข้น/],['stock_unit',/stock unit/],
+  ['dosing_weight',/dosing weight|weight basis/],['dosing_weight_formula',/weight formula|formula/],
+  ['dilution_note',/dilution|เจือจาง/],['administration_note',/administration|วิธีให้ยา/],
+  ['reference',/reference|source|guideline|เอกสารอ้างอิง/]];
+  return tests.find(x=>x[1].test(h))?.[0]||'';
+}
+function renderIntakeMap(){
+  let el=$c('intakeColumnMap'),opts=intakeFieldOptions();if(!el)return;
+  el.innerHTML=intakeHeaders.map((h,i)=>`<label><span>${esc(h)}</span><select data-intakemap="${i}">${opts.map(([v,l])=>`<option value="${v}" ${v===guessIntakeField(h)?'selected':''}>${l}</option>`).join('')}</select></label>`).join('');
+}
+function renderIntakeSheetPreview(){
+  let el=$c('intakeSheetPreview');if(!el)return;
+  if(!intakeRows.length){el.textContent='No rows found.';return}
+  let rows=intakeRows.slice(0,8);
+  el.innerHTML=`<div class="sheetScroll"><table><thead><tr>${intakeHeaders.map(h=>`<th>${esc(h)}</th>`).join('')}</tr></thead><tbody>${rows.map(r=>`<tr>${intakeHeaders.map(h=>`<td>${esc(r[h]??'')}</td>`).join('')}</tr>`).join('')}</tbody></table></div><small>${intakeRows.length} total row(s)</small>`;
+}
+async function intakeLoadSheetJs(){
+  if(window.XLSX)return true;
+  return await new Promise(resolve=>{
+    let s=document.createElement('script');s.src='https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js';
+    s.onload=()=>resolve(true);s.onerror=()=>resolve(false);document.head.appendChild(s);
+  });
+}
+async function readIntakeSheet(file){
+  let ext=(file.name.split('.').pop()||'').toLowerCase();
+  if(ext==='csv')return parseCsvText(await file.text());
+  if(!await intakeLoadSheetJs())throw new Error('Excel parser could not load. Save as CSV and retry.');
+  let wb=XLSX.read(await file.arrayBuffer(),{type:'array'}),ws=wb.Sheets[wb.SheetNames[0]];
+  let a=XLSX.utils.sheet_to_json(ws,{header:1,defval:''});
+  if(!a.length)return {headers:[],rows:[]};
+  let headers=a[0].map(x=>String(x).trim());
+  let rows=a.slice(1).filter(r=>r.some(x=>String(x).trim())).map(vals=>{let o={};headers.forEach((h,i)=>o[h]=vals[i]??'');return o});
+  return {headers,rows};
+}
+$c('intakeSheetFile')?.addEventListener('change',async e=>{
+  let file=e.target.files?.[0],status=$c('intakeSheetStatus');if(!file)return;
+  try{
+    status.textContent='Reading spreadsheet…';
+    let parsed=await readIntakeSheet(file);intakeHeaders=parsed.headers;intakeRows=parsed.rows;
+    renderIntakeMap();renderIntakeSheetPreview();status.textContent=`Loaded ${intakeRows.length} row(s).`;
+  }catch(err){status.textContent='Import failed: '+err.message}
+});
+
+function intakeMapping(){
+  let map={};document.querySelectorAll('[data-intakemap]').forEach(s=>{if(s.value)map[intakeHeaders[Number(s.dataset.intakemap)]]=s.value});return map;
+}
+function normalizeIntakeRow(row,map){
+  let out={};
+  for(let [src,target] of Object.entries(map)){
+    let v=row[src];
+    if(['dose_min','dose_default','dose_max','max_dose','stock_concentration'].includes(target)){
+      let n=Number(String(v).replace(/,/g,'').trim());out[target]=Number.isFinite(n)?n:null;
+    }else out[target]=String(v??'').trim()||null;
+  }
+  return out;
+}
+function intakeDrugs(){try{return window.getEvidenceMatcherDrugs?.()||[]}catch(e){return []}}
+function classifyIntake(c){
+  let drugs=intakeDrugs(),key=compactEvidenceSearch(c.generic_name||c.display_name||'');
+  if(!key)return {classification:'insufficient_evidence',reason:'Drug name is missing.'};
+  let exact=drugs.find(d=>compactEvidenceSearch(d.generic_name||d.display_name||d.name||'')===key);
+  if(exact){
+    let phase=canonicalEvidencePhase(`${c.phase||''} ${c.indication||''}`);
+    let rows=(window.getEvidenceMatcherDoseRecords?.()||[]).filter(r=>compactEvidenceSearch(r.generic_name)===key&&(phase==='unspecified'||doseRowPhase(r)===phase));
+    if(rows.length){
+      let conflict=rows.some(r=>(c.dose_unit&&r.dose_unit&&normUnit(c.dose_unit)!==normUnit(r.dose_unit))||(c.dosing_weight&&r.dosing_weight&&String(c.dosing_weight).toUpperCase()!==String(r.dosing_weight).toUpperCase()));
+      return {classification:conflict?'conflict':'exact_match',reason:conflict?'Existing record differs in unit or weight basis.':'Existing drug and phase found.'};
+    }
+    return {classification:'new_dose_record',reason:'Drug exists but this phase or indication appears new.'};
+  }
+  let probable=drugs.find(d=>{let k=compactEvidenceSearch(d.generic_name||d.display_name||d.name||'');return k&&(k.includes(key)||key.includes(k))});
+  if(probable)return {classification:'probable_match',reason:'Similar medication name found; synonym review required.'};
+  return {classification:'new_drug',reason:'No matching drug found.'};
+}
+$c('buildSpreadsheetCandidates')?.addEventListener('click',()=>{
+  let map=intakeMapping();
+  intakeCandidates=intakeRows.map((r,i)=>{let candidate=normalizeIntakeRow(r,map);return {id:`sheet-${Date.now()}-${i}`,source:'spreadsheet',candidate,...classifyIntake(candidate)}});
+  renderIntakeQueue();$c('intakeSheetStatus').textContent=`Created ${intakeCandidates.length} review candidate(s). Nothing was applied.`;
+});
+
+function intakeExtractStatements(text){
+  let t=normalizeEvidenceText(text||''),out=[];
+  for(let d of intakeDrugs()){
+    let name=d.generic_name||d.display_name||d.name;if(!name)continue;
+    let idx=normalizedSearch(t).indexOf(normalizedSearch(name));if(idx<0)continue;
+    let excerpt=t.slice(Math.max(0,idx-150),Math.min(t.length,idx+650));
+    let doses=extractDoseCandidates(excerpt),weights=detectWeightBases(excerpt);
+    if(doses.length)for(let dose of doses){
+      let w=weightNearest(excerpt,dose.idx);
+      out.push({generic_name:name,phase:canonicalEvidencePhase(excerpt),dose_min:dose.dose_min,dose_default:dose.dose_default,dose_max:dose.dose_max,dose_unit:dose.dose_unit,dosing_weight:w?.basis||null,dosing_weight_formula:w?.formula||null,evidence_excerpt:excerpt});
+    }else if(weights.length)out.push({generic_name:name,phase:canonicalEvidencePhase(excerpt),dosing_weight:weights[0].basis,evidence_excerpt:excerpt});
+  }
+  return out;
+}
+function intakeCandidatesFromText(text,source,meta={}){
+  return intakeExtractStatements(text).map((candidate,i)=>({id:`${source}-${Date.now()}-${i}`,source,candidate:{...candidate,...meta},...classifyIntake(candidate)}));
+}
+$c('analyzePastedClinicalText')?.addEventListener('click',()=>{
+  let text=$c('intakePasteText').value,status=$c('intakePasteStatus');
+  if(!text.trim()){status.textContent='Paste clinical text first.';return}
+  let items=intakeCandidatesFromText(text,'pasted_text',{reference:$c('intakePasteTitle').value||null,page_reference:$c('intakePastePage').value||null});
+  intakeCandidates.push(...items);renderIntakeQueue();status.textContent=items.length?`Created ${items.length} candidate(s).`:'No structured medication statement found.';
+});
+async function loadMammoth(){
+  if(window.mammoth)return true;
+  return await new Promise(resolve=>{let s=document.createElement('script');s.src='https://cdn.jsdelivr.net/npm/mammoth@1.8.0/mammoth.browser.min.js';s.onload=()=>resolve(true);s.onerror=()=>resolve(false);document.head.appendChild(s)});
+}
+async function textFromIntakeFile(file){
+  let ext=(file.name.split('.').pop()||'').toLowerCase();
+  if(ext==='txt'||ext==='csv')return await file.text();
+  if(ext==='pdf'){let pages=await extractPdfText(new Uint8Array(await file.arrayBuffer()));return pages.map(p=>p.text||'').join('\n')}
+  if(ext==='docx'){
+    if(!await loadMammoth())throw new Error('Word parser could not load. Convert to PDF or paste text.');
+    return (await mammoth.extractRawText({arrayBuffer:await file.arrayBuffer()})).value||'';
+  }
+  if(['png','jpg','jpeg','webp'].includes(ext))throw new Error('Image OCR is not enabled. Store the image as evidence and paste verified text, or use a searchable PDF.');
+  throw new Error('Unsupported file type.');
+}
+$c('analyzeIntakeDocument')?.addEventListener('click',async()=>{
+  let file=$c('intakeEvidenceFile').files?.[0],status=$c('intakeDocumentStatus');if(!file){status.textContent='Choose a file first.';return}
+  try{
+    status.textContent='Reading file…';
+    let text=await textFromIntakeFile(file),items=intakeCandidatesFromText(text,'document',{original_filename:file.name,reference:$c('intakeDocumentNotes').value||null});
+    intakeCandidates.push(...items);renderIntakeQueue();status.textContent=items.length?`Created ${items.length} candidate(s) from ${file.name}.`:'File read, but no structured medication statement was found.';
+  }catch(err){status.textContent='Analysis unavailable: '+err.message}
+});
+
+function intakeClassLabel(x){return ({exact_match:'Exact match',probable_match:'Probable match',new_dose_record:'New dose record',conflict:'Conflict',new_drug:'New drug',insufficient_evidence:'Insufficient evidence'})[x]||x}
+function intakeSummary(c){
+  let a=[];if(c.phase)a.push(c.phase);
+  if(c.dose_min!=null||c.dose_max!=null)a.push(`${c.dose_min??'—'}–${c.dose_max??'—'} ${c.dose_unit||''}`.trim());
+  else if(c.dose_default!=null)a.push(`${c.dose_default} ${c.dose_unit||''}`.trim());
+  if(c.dosing_weight)a.push(c.dosing_weight);return a.join(' • ')||'No complete dose statement';
+}
+function renderIntakeQueue(){
+  let el=$c('intakeReviewQueue');if(!el)return;
+  if(!intakeCandidates.length){el.textContent='No intake candidates yet.';return}
+  el.innerHTML=intakeCandidates.map(item=>{
+    let c=item.candidate;
+    return `<div class="intakeCandidate ${item.classification}">
+      <div class="intakeCandidateTitle"><b>${esc(c.generic_name||c.display_name||'Unnamed medication')}</b><span>${esc(intakeClassLabel(item.classification))}</span></div>
+      <div class="intakeCandidateMeta">${esc(item.source)} • ${esc(intakeSummary(c))}</div>
+      <p>${esc(item.reason||'')}</p>
+      ${c.evidence_excerpt?`<details><summary>Evidence excerpt</summary><blockquote>${esc(c.evidence_excerpt)}</blockquote></details>`:''}
+      <div class="intakeCandidateActions"><button type="button" onclick="alert('Review candidate, then map it through Manual Add or Reconciliation. v0.58 intentionally does not silently merge data.')">Review / map</button><button class="rejectBtn" type="button" onclick="intakeCandidates=intakeCandidates.filter(x=>x.id!=='${item.id}');renderIntakeQueue()">Remove</button></div>
+    </div>`;
+  }).join('');
+}
+$c('clearIntakeQueue')?.addEventListener('click',()=>{
+  if(intakeCandidates.length&&!confirm('Clear the intake queue? No Drug Library data has been applied.'))return;
+  intakeCandidates=[];renderIntakeQueue();
+});

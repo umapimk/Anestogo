@@ -4,13 +4,13 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#f5f8fc">
-<title>Anesthculator v0.55</title>
+<title>Anesthculator v0.58</title>
 <link rel="manifest" href="./manifest.json">
 <link rel="stylesheet" href="./style.css">
 </head>
 <body>
 <header>
-  <div class="headerLeft"><button id="appBackBtn" class="appBackBtn" type="button" aria-label="Back" title="Back">← <span>Back</span></button><div class="brand"><span class="drop">💧</span><div><b>Anesthculator <small>v0.55</small></b><em>Calm OR • Thailand Edition</em></div></div></div>
+  <div class="headerLeft"><button id="appBackBtn" class="appBackBtn" type="button" aria-label="Back" title="Back">← <span>Back</span></button><div class="brand"><span class="drop">💧</span><div><b>Anesthculator <small>v0.58</small></b><em>Calm OR • Thailand Edition</em></div></div></div>
   <button id="theme">☾</button>
 </header>
 
@@ -185,7 +185,7 @@
   <div class="head"><div><span>CLOUD LIBRARY</span><h2>☁️ Evidence & Verification Cloud</h2></div><strong id="cloudStatus">Signed out</strong></div>
   <div class="warning"><b>Privacy boundary:</b> Patient age, sex, weight, height and case calculations are never uploaded. Only Drug Library, references, verification metadata and evidence files are cloud-enabled.</div>
   <div id="cloudAuthCard" class="card cloudCard"><h3>Account</h3><p id="cloudUserText">Sign in to use the shared Drug Library.</p><div class="cloudGrid"><label>Email<input id="cloudEmail" type="email" autocomplete="email"></label><label>Password<input id="cloudPassword" type="password" autocomplete="current-password"></label></div><div class="drugActions"><button id="cloudSignIn" type="button">Sign in</button><button id="cloudSignUp" type="button">Create account</button><button id="cloudSignOut" type="button" hidden>Sign out</button><button id="cloudRefresh" type="button">↻ Refresh</button></div><p id="cloudSyncText">Sign in first.</p></div>
-  <div class="cloudTabs" role="tablist"><button data-cloudtab="references" class="active">References</button><button data-cloudtab="files">Evidence Files</button><button data-cloudtab="reconcile">Reconciliation</button><button data-cloudtab="verifications">Verifications</button><button data-cloudtab="users">Users / Roles</button></div>
+  <div class="cloudTabs" role="tablist"><button data-cloudtab="references" class="active">References</button><button data-cloudtab="files">Evidence Files</button><button data-cloudtab="reconcile">Reconciliation</button><button data-cloudtab="verifications">Verifications</button><button data-cloudtab="intake">📥 Intake Hub</button><button data-cloudtab="users">Users / Roles</button></div>
   <div id="cloudPane-references" class="cloudPane active"><div class="card cloudCard"><h3>References</h3><div id="cloudReferencesList" class="cloudList">Sign in and refresh.</div></div><div class="card cloudCard"><h3>Add Reference</h3><p id="cloudDoseContext" class="note">Not linked to a dose record.</p><div class="cloudGrid"><label>Title<input id="refTitle"></label><label>Organization<input id="refOrg"></label><label>Edition / version<input id="refEdition"></label><label>Publication date<input id="refDate" type="date"></label><label>Page<input id="refPage"></label><label>Table<input id="refTable"></label><label>Section<input id="refSection"></label><label>Source type<select id="refType"><option>guideline</option><option>product_label</option><option>institutional_protocol</option><option>textbook</option><option>other</option></select></label></div><label>URL<input id="refUrl" type="url"></label><label>Notes<textarea id="refNotes" rows="3"></textarea></label><label>Evidence file (optional)<input id="refFile" type="file" accept=".pdf,.xlsx,.xls,image/*"></label><div class="drugActions"><button id="saveReferenceCloud" type="button">＋ Save Reference / Evidence</button></div><div id="refCloudResult" class="note"></div><div id="uploadDiagnostic" class="evidenceDiagnostic" hidden></div><p class="note evidenceSafetyNote">Saving evidence does not change medication data. Use Reconciliation → Extract & Compare, then clinician Review/Approve.</p></div></div>
   <div id="cloudPane-files" class="cloudPane"><div class="card cloudCard"><h3>Evidence Files</h3><div id="cloudFilesList" class="cloudList">Sign in and refresh.</div></div></div>
 
@@ -229,7 +229,66 @@
   </div>
 
   <div id="cloudPane-verifications" class="cloudPane"><div class="card cloudCard"><h3>Verifications</h3><p id="verificationDoseContext" class="note">Select a cloud dose record from Drug Library to filter or verify.</p><div id="cloudVerificationsList" class="cloudList">Sign in and refresh.</div><div class="drugActions"><button id="createPendingVerification" type="button">＋ Create pending verification for selected dose</button></div></div></div>
-  <div id="cloudPane-users" class="cloudPane"><div class="card cloudCard"><h3>Users / Roles</h3><div id="cloudUsersList" class="cloudList">Sign in and refresh.</div></div></div>
+  
+  <div id="cloudPane-intake" class="cloudPane">
+    <div class="card cloudCard intakeHero">
+      <span>CONTROLLED DATA INGESTION</span>
+      <h3>Medication Evidence Intake Hub</h3>
+      <p>Manual entry, spreadsheet import, document analysis and pasted clinical text all end in a review queue. Nothing is merged silently.</p>
+    </div>
+
+    <div class="intakeModes">
+      <button class="active" data-intakemode="manual" type="button">✍️ Manual Add</button>
+      <button data-intakemode="sheet" type="button">📊 CSV / Excel</button>
+      <button data-intakemode="document" type="button">📄 Document / Image</button>
+      <button data-intakemode="paste" type="button">📋 Paste Text</button>
+    </div>
+
+    <div class="card cloudCard intakePanel" data-intakepanel="manual">
+      <h3>Manual Add Drug</h3>
+      <p class="note">Use Drug Library → Add Drug for complete manual entry. Keep a newly entered dose locked until it is verified.</p>
+      <button id="openManualDrugAdd" type="button">Open Drug Library</button>
+    </div>
+
+    <div class="card cloudCard intakePanel" data-intakepanel="sheet" hidden>
+      <h3>Import CSV / Excel</h3>
+      <p class="note">CSV works directly. Excel uses a browser spreadsheet parser when available.</p>
+      <input id="intakeSheetFile" type="file" accept=".csv,.xlsx,.xls,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel">
+      <div id="intakeSheetStatus" class="note"></div>
+      <div id="intakeColumnMap" class="columnMapGrid"></div>
+      <div id="intakeSheetPreview"></div>
+      <button id="buildSpreadsheetCandidates" type="button">Create review candidates</button>
+    </div>
+
+    <div class="card cloudCard intakePanel" data-intakepanel="document" hidden>
+      <h3>Analyze Document or Image</h3>
+      <p class="note">PDF, DOCX and text can be analyzed. Images may be stored as evidence; OCR is not enabled in this browser build.</p>
+      <input id="intakeEvidenceFile" type="file" accept=".pdf,.docx,.txt,.csv,.png,.jpg,.jpeg,.webp,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,image/*,text/plain,text/csv">
+      <textarea id="intakeDocumentNotes" rows="3" placeholder="Optional source or protocol notes"></textarea>
+      <button id="analyzeIntakeDocument" type="button">Analyze and create candidates</button>
+      <div id="intakeDocumentStatus" class="note"></div>
+    </div>
+
+    <div class="card cloudCard intakePanel" data-intakepanel="paste" hidden>
+      <h3>Paste Clinical Text</h3>
+      <textarea id="intakePasteText" rows="12" placeholder="Paste guideline text, protocol text or a medication dosing statement"></textarea>
+      <div class="cloudGrid">
+        <label>Source title<input id="intakePasteTitle"></label>
+        <label>Page / section<input id="intakePastePage"></label>
+      </div>
+      <button id="analyzePastedClinicalText" type="button">Analyze pasted text</button>
+      <div id="intakePasteStatus" class="note"></div>
+    </div>
+
+    <div class="card cloudCard">
+      <div class="intakeQueueHeader">
+        <div><h3>Import Review Queue</h3><p class="note">Exact match, probable match, new dose record, conflict, new drug or insufficient evidence.</p></div>
+        <button id="clearIntakeQueue" type="button">Clear queue</button>
+      </div>
+      <div id="intakeReviewQueue">No intake candidates yet.</div>
+    </div>
+  </div>
+<div id="cloudPane-users" class="cloudPane"><div class="card cloudCard"><h3>Users / Roles</h3><div id="cloudUsersList" class="cloudList">Sign in and refresh.</div></div></div>
 </section>
 
 <dialog id="dilutionDialog">

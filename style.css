@@ -747,3 +747,17 @@ html[data-dark="1"] .archiveDrugBtn,html[data-dark="1"] .restoreDrugBtn{backgrou
 .conflictBox{display:grid;gap:4px;padding:11px 12px;border-radius:13px;background:#fff7df;border:1px solid #e1b950;color:#715000}
 .reconcileStatus.conflict{background:#fff1cf;color:#795600}
 @media(max-width:640px){.evidenceQueueToolbar{align-items:stretch;flex-direction:column}.evidenceQueueActions{justify-content:flex-start}}
+
+/* v0.58 Evidence Intake Hub */
+.intakeHero h3{margin:.35rem 0}.intakeModes{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin:14px 0}
+.intakeModes button.active{background:var(--accent);color:#fff}.intakePanel{display:grid;gap:12px}
+.columnMapGrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}
+.columnMapGrid label{display:grid;gap:5px;padding:9px;border:1px solid var(--line);border-radius:12px}
+.sheetScroll{overflow:auto;max-height:340px;border:1px solid var(--line);border-radius:12px}
+.sheetScroll table{border-collapse:collapse;min-width:720px;width:100%}.sheetScroll th,.sheetScroll td{padding:8px;border-bottom:1px solid var(--line);text-align:left;font-size:12px}
+.intakeQueueHeader,.intakeCandidateTitle,.intakeCandidateActions{display:flex;justify-content:space-between;gap:10px;align-items:center}
+.intakeCandidate{display:grid;gap:8px;padding:14px;border:1px solid var(--line);border-radius:16px;margin:10px 0}
+.intakeCandidateTitle span{padding:5px 9px;border-radius:999px;background:var(--soft);font-weight:800;font-size:12px}
+.intakeCandidate.conflict{border-color:#d6a33b}.intakeCandidate.new_drug{border-color:#6d91bd}.intakeCandidate.exact_match{border-color:#72a67a}
+.intakeCandidateMeta{font-weight:700;color:var(--muted)}.intakeCandidate blockquote{max-height:180px;overflow:auto}
+@media(max-width:700px){.intakeModes{grid-template-columns:1fr 1fr}.columnMapGrid{grid-template-columns:1fr}}
