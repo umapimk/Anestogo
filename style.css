@@ -719,3 +719,18 @@ html[data-dark="1"] .archiveDrugBtn,html[data-dark="1"] .restoreDrugBtn{backgrou
 
 /* v0.50 */
 .reconcileRow blockquote{max-height:180px;overflow:auto}
+
+/* v0.51 Clinical Evidence Engine */
+.clinicalEvidenceCard{gap:10px}
+.reconcileRowTitle>div:first-child{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.phaseChip{display:inline-flex;padding:5px 9px;border-radius:999px;background:var(--soft);font-size:12px;font-weight:850}
+.confidenceRow{display:flex;gap:10px;align-items:center;flex-wrap:wrap;font-size:13px}
+.confidenceRow strong{font-size:15px}
+.mappingState{padding:4px 8px;border-radius:999px;background:#eef3f8;font-weight:750}
+.evidenceCompareGrid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.evidenceCompareGrid>div{padding:12px;border:1px solid var(--line);border-radius:14px;background:var(--soft)}
+.evidenceCompareGrid small{display:block;margin-bottom:6px;color:var(--muted)}
+.evidenceCompareGrid strong{display:block;line-height:1.4}
+.evidenceExcerpt summary{cursor:pointer;font-weight:800;color:var(--accent)}
+.evidenceExcerpt blockquote{max-height:190px;overflow:auto;margin:8px 0 0}
+@media(max-width:600px){.evidenceCompareGrid{grid-template-columns:1fr}}

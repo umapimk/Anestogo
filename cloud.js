@@ -8,6 +8,7 @@ const token=()=>session?.access_token||null;
 
 let cloudDrugRows=[], cloudDoseRows=[], cloudReferences=[], cloudEvidenceFiles=[], cloudReconciliations=[], cloudProfiles=[];
 let matcherLoadStatus={cloudQuery:'not attempted',cloudError:null,cloudCount:0,appCount:0,combinedCount:0};
+let appEvidenceDoseRows=[];
 
 function headers(extra={}){return {'apikey':SUPABASE_KEY,'Authorization':`Bearer ${token()||SUPABASE_KEY}`,'Content-Type':'application/json',...extra}}
 async function api(path,opt={}){let r=await fetch(SUPABASE_URL+path,{...opt,headers:headers(opt.headers||{})});let text=await r.text(),data;try{data=text?JSON.parse(text):null}catch{data=text}if(!r.ok)throw new Error(data?.message||data?.msg||data?.error_description||data?.error||`${r.status} ${r.statusText}`);return data}
@@ -38,42 +39,69 @@ function statusBadge(s){
   return `<span class="reconcileStatus ${esc((s||'uploaded').toLowerCase())}">${esc(v)}</span>`;
 }
 function proposedSummary(r){
-  let p=r.proposed_changes||{};
-  let a=[];
+  let p=r.proposed_changes||{},a=[];
+  if(Array.isArray(p.variants)){
+    let labels=p.variants.map(v=>{
+      let dose=(v.dose_min!=null||v.dose_max!=null)
+        ? `${v.dose_min??'—'}–${v.dose_max??'—'} ${v.dose_unit||''}`.trim()
+        : (v.dose_default!=null?`${v.dose_default} ${v.dose_unit||''}`.trim():'');
+      return [v.phase||'',dose,v.dosing_weight||''].filter(Boolean).join(' • ');
+    });
+    return labels.join(' | ')||`${p.variants.length} evidence variants`;
+  }
   if(p.dose_min!=null||p.dose_max!=null){
     let range=(p.dose_min!=null&&p.dose_max!=null)?`${p.dose_min}–${p.dose_max}`:(p.dose_default??p.dose_min??p.dose_max);
     a.push(`Dose ${range}${p.dose_unit?' '+p.dose_unit:''}`);
-  } else if(p.dose_default!=null) a.push(`Dose ${p.dose_default}${p.dose_unit?' '+p.dose_unit:''}`);
+  }else if(p.dose_default!=null)a.push(`Dose ${p.dose_default}${p.dose_unit?' '+p.dose_unit:''}`);
   if(p.dosing_weight)a.push(`Weight basis ${p.dosing_weight}`);
-  if(p.stock_concentration!=null)a.push(`Stock ${p.stock_concentration}${p.stock_unit?' '+p.stock_unit:''}`);if(Array.isArray(p.variants))a.push(`${p.variants.length} evidence variants — manual review required`);
+  if(p.stock_concentration!=null)a.push(`Stock ${p.stock_concentration}${p.stock_unit?' '+p.stock_unit:''}`);
   return a.join(' • ')||'No structured change extracted';
+}
+function currentLocalSummary(p){
+  let x=p?.current_local_record;if(!x)return '';
+  let a=[x.phase||x.indication||''];
+  if(x.dose_min!=null||x.dose_max!=null)a.push(`${x.dose_min??'—'}–${x.dose_max??'—'} ${x.dose_unit||''}`.trim());
+  else if(x.dose_default!=null)a.push(`${x.dose_default} ${x.dose_unit||''}`.trim());
+  if(x.dosing_weight)a.push(x.dosing_weight);
+  return a.filter(Boolean).join(' • ');
 }
 
 function renderReconciliations(rows,refs,files){
-  let el=$c('cloudReconciliationList'); if(!el)return;
+  let el=$c('cloudReconciliationList');if(!el)return;
   let refName=Object.fromEntries((refs||[]).map(x=>[x.id,x.title]));
   let fileName=Object.fromEntries((files||[]).map(x=>[x.id,x.original_filename]));
   el.innerHTML=rows.length?rows.map(r=>{
-    let dose=(cloudDoseRows||[]).find(d=>d.id===r.dose_record_id);
+    let p=r.proposed_changes||{},dose=(cloudDoseRows||[]).find(d=>d.id===r.dose_record_id);
     let drug=(cloudDrugRows||[]).find(d=>d.id===(dose?.drug_id||r.drug_id));
-    let current=dose?[
-      dose.dose_min!=null||dose.dose_max!=null?`Dose ${dose.dose_min??'—'}–${dose.dose_max??'—'} ${dose.dose_unit||''}`:'',
-      `Weight ${dose.dosing_weight||'TBW'}`,
-      dose.stock_concentration!=null?`Stock ${dose.stock_concentration} ${dose.stock_unit||''}`:''
-    ].filter(Boolean).join(' • '):'Not matched to a specific dose record';
-
-    return `<div class="cloudRow reconcileRow">
-      <div class="reconcileRowTitle"><b>${esc(drug?.generic_name||r.matched_drug_name||'Unmatched evidence')}</b>${statusBadge(r.status)}</div>
+    let phase=p.evidence_context||p.phase||'Unspecified phase';
+    let confidence=Number(p.confidence_score||0);
+    let cloudCurrent=dose?[
+      dose.phase||dose.indication||'',
+      dose.dose_min!=null||dose.dose_max!=null?`${dose.dose_min??'—'}–${dose.dose_max??'—'} ${dose.dose_unit||''}`:'',
+      dose.dosing_weight||'TBW'
+    ].filter(Boolean).join(' • '):'';
+    let localCurrent=currentLocalSummary(p);
+    let current=cloudCurrent||localCurrent||'No matching current dose record';
+    let mapping=dose?'Cloud dose record matched':(localCurrent?'Built-in/local record matched; Cloud mapping required':'Manual mapping required');
+    return `<div class="cloudRow reconcileRow clinicalEvidenceCard">
+      <div class="reconcileRowTitle">
+        <div><b>${esc(drug?.generic_name||r.matched_drug_name||'Unmatched evidence')}</b><span class="phaseChip">${esc(phase)}</span></div>
+        ${statusBadge(r.status)}
+      </div>
       <span>${esc(refName[r.reference_id]||'Reference')} • ${esc(fileName[r.reference_file_id]||'Evidence file')}</span>
-      <small><b>Current:</b> ${esc(current)}</small>
-      <small><b>Extracted:</b> ${esc(proposedSummary(r))}</small>
-      ${r.evidence_excerpt?`<blockquote>${esc(r.evidence_excerpt)}</blockquote>`:''}
+      <div class="confidenceRow"><span>Confidence</span><strong>${confidence||'—'}${confidence?'%':''}</strong><span class="mappingState">${esc(mapping)}</span></div>
+      <div class="evidenceCompareGrid">
+        <div><small>Current record</small><strong>${esc(current)}</strong></div>
+        <div><small>Evidence proposal</small><strong>${esc(proposedSummary(r))}</strong></div>
+      </div>
+      ${r.evidence_excerpt?`<details class="evidenceExcerpt"><summary>View evidence excerpt</summary><blockquote>${esc(r.evidence_excerpt)}</blockquote></details>`:''}
       ${r.page_reference?`<small>Page ${esc(r.page_reference)}</small>`:''}
       <div class="reconcileActions">
         ${r.reference_file_id?`<button type="button" onclick="cloudOpenEvidenceById('${r.reference_file_id}')">📎 Evidence</button>`:''}
         ${(r.status==='review_required'||r.status==='extracted')&&r.dose_record_id?
-          `<button class="approveBtn" type="button" onclick="cloudApproveReconciliation('${r.id}')">✓ Approve update</button>
-           <button class="rejectBtn" type="button" onclick="cloudRejectReconciliation('${r.id}')">✕ Reject</button>`:''}
+          `<button class="approveBtn" type="button" onclick="cloudApproveReconciliation('${r.id}')">✓ Review & approve</button>
+           <button class="rejectBtn" type="button" onclick="cloudRejectReconciliation('${r.id}')">✕ Reject</button>`:
+          `<button type="button" disabled title="A Cloud dose record must be mapped before approval">Cloud mapping required</button>`}
       </div>
     </div>`;
   }).join(''):'No reconciliation items yet.';
@@ -340,6 +368,83 @@ async function prepareMatcherDrugs(){
   return rows;
 }
 
+
+function canonicalEvidencePhase(ctx){
+  let s=normalizedSearch(ctx||'');
+  if(/induction|bolus|นำสลบ/.test(s))return 'induction';
+  if(/maintenance|infusion|ต่อเนื่อง|หยด/.test(s))return 'maintenance';
+  if(/emergency|crisis|resuscitation|ฉุกเฉิน/.test(s))return 'emergency';
+  if(/sedation|procedural/.test(s))return 'sedation';
+  return 'unspecified';
+}
+function doseRowPhase(row){
+  return canonicalEvidencePhase(`${row?.phase||''} ${row?.indication||''}`);
+}
+function evidenceDrugKey(d){
+  return compactEvidenceSearch(d?.generic_name||d?.display_name||'');
+}
+function loadAppEvidenceDoses(){
+  try{appEvidenceDoseRows=window.getEvidenceMatcherDoseRecords?.()||[]}
+  catch(e){appEvidenceDoseRows=[];matcherLoadStatus.appDoseError=e.message||String(e)}
+  return appEvidenceDoseRows;
+}
+function localDoseCandidatesFor(drug,ctx){
+  let key=evidenceDrugKey(drug),phase=canonicalEvidencePhase(ctx);
+  let rows=(appEvidenceDoseRows||[]).filter(r=>compactEvidenceSearch(r.generic_name)===key);
+  let exact=rows.filter(r=>doseRowPhase(r)===phase);
+  return exact.length?exact:rows;
+}
+function localDoseMatch(drug,excerpt,ctx){
+  let rows=localDoseCandidatesFor(drug,ctx);
+  if(!rows.length)return null;
+  let phase=canonicalEvidencePhase(ctx),s=normalizedSearch(excerpt||'');
+  let scored=rows.map(r=>{
+    let score=0;
+    if(doseRowPhase(r)===phase&&phase!=='unspecified')score+=8;
+    for(let t of [r.indication,r.route,r.population].filter(Boolean)){
+      for(let w of normalizedSearch(t).split(' ').filter(x=>x.length>3))if(s.includes(w))score++;
+    }
+    return {r,score};
+  }).sort((a,b)=>b.score-a.score);
+  return scored[0].r;
+}
+function currentDoseSnapshot(row){
+  if(!row)return null;
+  return {
+    source:row.source||'unknown',
+    phase:row.phase||null,
+    indication:row.indication||null,
+    dose_min:row.dose_min??null,
+    dose_default:row.dose_default??null,
+    dose_max:row.dose_max??null,
+    dose_unit:row.dose_unit||null,
+    dosing_weight:row.dosing_weight||'TBW',
+    dosing_weight_formula:row.dosing_weight_formula||null,
+    stock_concentration:row.stock_concentration??null,
+    stock_unit:row.stock_unit||null,
+    app_drug_id:row.app_drug_id||null,
+    cloud_drug_id:row.cloud_drug_id||null,
+    cloud_dose_id:row.cloud_dose_id||null
+  };
+}
+function evidenceConfidence(f){
+  let score=0;
+  if(f.drug)score+=25;
+  if(canonicalEvidencePhase(f.evidenceContext)!=='unspecified')score+=20;
+  if(f.proposed?.dose_unit)score+=20;
+  if(f.proposed?.dosing_weight)score+=15;
+  if(f.dose)score+=20;
+  else if(f.localDose)score+=10;
+  return Math.min(100,score);
+}
+function proposedVariantKey(v){
+  return JSON.stringify({
+    phase:v.phase||'',
+    dose_min:v.dose_min??null,dose_default:v.dose_default??null,dose_max:v.dose_max??null,
+    dose_unit:v.dose_unit||null,dosing_weight:v.dosing_weight||null
+  });
+}
+
 function cloudDrugForMatcherDrug(d){
   if(isUuidValue(d?.id))return d;
   let key=matcherKey(d);
@@ -429,17 +534,35 @@ function shortExcerpt(name,ctx,text,raw){
 function mergeClinicalFindings(rows){
   let map=new Map();
   for(let f of rows){
-    let k=`${matcherKey(f.drug)}|${normalizedSearch(f.evidenceContext||'unspecified')}|${f.page}`;
-    if(!map.has(k))map.set(k,{...f,variants:[]});
-    let g=map.get(k),sig=JSON.stringify(f.proposed);
-    if(!g.variants.some(v=>JSON.stringify(v)===sig))g.variants.push(f.proposed);
+    let phase=canonicalEvidencePhase(f.evidenceContext);
+    let k=`${matcherKey(f.drug)}|${phase}`;
+    if(!map.has(k))map.set(k,{
+      ...f,
+      evidenceContext:phase==='unspecified'?(f.evidenceContext||'Unspecified'):phase[0].toUpperCase()+phase.slice(1),
+      variants:[],pages:new Set(),excerpts:[]
+    });
+    let g=map.get(k);
+    let variant={...f.proposed,phase:g.evidenceContext,page:f.page};
+    let sig=proposedVariantKey(variant);
+    if(!g.variants.some(v=>proposedVariantKey(v)===sig))g.variants.push(variant);
+    if(f.page!=null)g.pages.add(String(f.page));
+    if(f.excerpt&&!g.excerpts.includes(f.excerpt))g.excerpts.push(f.excerpt);
     if(!g.dose&&f.dose)g.dose=f.dose;
+    if(!g.localDose&&f.localDose)g.localDose=f.localDose;
   }
   return [...map.values()].map(g=>{
-    if(g.variants.length===1)g.proposed=g.variants[0];
-    else{g.proposed={evidence_context:g.evidenceContext,variants:g.variants};g.multiVariant=true}
+    let unique=g.variants;
+    g.page=[...g.pages].sort((a,b)=>Number(a)-Number(b)).join(', ');
+    g.excerpt=g.excerpts.slice(0,3).join(' … ');
+    if(unique.length===1)g.proposed=unique[0];
+    else{
+      g.proposed={evidence_context:g.evidenceContext,variants:unique};
+      g.multiVariant=true;
+    }
+    g.confidence=evidenceConfidence(g);
     return g;
-  });
+  }).sort((a,b)=>matcherKey(a.drug).localeCompare(matcherKey(b.drug))||
+    canonicalEvidencePhase(a.evidenceContext).localeCompare(canonicalEvidencePhase(b.evidenceContext)));
 }
 
 function analyzePages(pages,matcherDrugs){
@@ -462,9 +585,10 @@ function analyzePages(pages,matcherDrugs){
       }
       for(let c of cs){
         let dose=matchSpecificDose(x.drug,c.text,c.ctx);
+        let localDose=localDoseMatch(x.drug,c.text,c.ctx);
         findings.push({
-          drug:x.drug,dose,page:pg.page,evidenceContext:c.ctx,
-          proposed:c.proposed,
+          drug:x.drug,dose,localDose,page:pg.page,evidenceContext:c.ctx,
+          proposed:{...c.proposed,phase:canonicalEvidencePhase(c.ctx)},
           excerpt:shortExcerpt(x.drug.generic_name||x.drug.display_name,c.ctx,c.text,c.raw),
           matchedTerm:x.hit.term,matchMode:x.hit.mode
         });
@@ -495,6 +619,7 @@ function showExtractionDiagnostic(stats){
      ${stats.cloudQueryError?`<div class="diagError">Cloud query error: <b>${esc(stats.cloudQueryError)}</b></div>`:''}${stats.doseJoinError?`<div class="diagError">Dose-record join error: <b>${esc(stats.doseJoinError)}</b></div>`:''}
      <div>Cloud drugs available: <b>${Number(stats.cloudDrugCount||0).toLocaleString()}</b></div>
      <div>Built-in/local fallback drugs: <b>${Number(stats.appDrugCount||0).toLocaleString()}</b></div>
+     <div>Built-in/local dose records available: <b>${Number(appEvidenceDoseRows.length||0).toLocaleString()}</b></div>
      <div>Total unique matcher drugs: <b>${Number(stats.combinedDrugCount||0).toLocaleString()}</b></div>
      <div>Drug names found: <b>${esc(names)}</b></div>
      <div>Matched terms: <b>${esc(terms)}</b></div>
@@ -503,18 +628,36 @@ function showExtractionDiagnostic(stats){
 }
 
 async function createReconciliationRows(fileRow,findings){
-  let rows=findings.map(f=>({
-    reference_id:fileRow.reference_id,
-    reference_file_id:fileRow.id,
-    drug_id:isUuidValue(f.drug.id)?f.drug.id:null,
-    dose_record_id:f.dose?.id||null,
-    matched_drug_name:f.drug.generic_name||f.drug.display_name||null,
-    status:(f.dose&&!f.multiVariant)?'review_required':'extracted',
-    evidence_excerpt:f.excerpt,
-    page_reference:String(f.page),
-    proposed_changes:{...f.proposed,evidence_context:f.evidenceContext||undefined,confidence:f.dose&&!f.multiVariant?'high':'manual_review'},
-    extracted_by:session.user.id
-  }));
+  // Re-running extraction replaces only unreviewed machine-generated rows for this file.
+  // Approved/rejected history remains untouched.
+  try{
+    await api(`/rest/v1/evidence_reconciliations?reference_file_id=eq.${encodeURIComponent(fileRow.id)}&status=in.(uploaded,extracted,review_required)`,{method:'DELETE'});
+  }catch(e){console.warn('Could not clear old pending reconciliation rows',e)}
+
+  let rows=findings.map(f=>{
+    let local=currentDoseSnapshot(f.localDose);
+    let confidence=f.confidence??evidenceConfidence(f);
+    let p={
+      ...f.proposed,
+      evidence_context:f.evidenceContext||undefined,
+      confidence_score:confidence,
+      confidence:confidence>=80?'high':confidence>=60?'moderate':'manual_review',
+      current_local_record:local||undefined,
+      requires_cloud_mapping:!f.dose
+    };
+    return {
+      reference_id:fileRow.reference_id,
+      reference_file_id:fileRow.id,
+      drug_id:isUuidValue(f.drug.id)?f.drug.id:(local?.cloud_drug_id||null),
+      dose_record_id:f.dose?.id||(local?.cloud_dose_id||null),
+      matched_drug_name:f.drug.generic_name||f.drug.display_name||null,
+      status:(f.dose&&!f.multiVariant&&confidence>=80)?'review_required':'extracted',
+      evidence_excerpt:f.excerpt,
+      page_reference:String(f.page||''),
+      proposed_changes:p,
+      extracted_by:session.user.id
+    };
+  });
   if(!rows.length)return [];
   return await api('/rest/v1/evidence_reconciliations',{
     method:'POST',headers:{'Prefer':'return=representation'},body:JSON.stringify(rows)
@@ -539,6 +682,7 @@ async function analyzeEvidence(){
       pages=[{page:1,text}];
     }
     await ensureCloudDoseMap();
+    loadAppEvidenceDoses();
     let matcherDrugs=await prepareMatcherDrugs();
     let analysis=analyzePages(pages,matcherDrugs);
     showExtractionDiagnostic(analysis);

@@ -401,6 +401,46 @@ window.getEvidenceMatcherDrugs=()=>{
  }
  return [...seen.values()];
 };
+
+window.getEvidenceMatcherDoseRecords=()=>{
+ const rows=[];
+ for(const d0 of allDrugs()){
+   const d=classifiedDrug(d0);
+   const name=String(d.name||d.generic_name||d.display_name||'').trim();
+   if(!name)continue;
+   const records=Array.isArray(d.dosingRecords)&&d.dosingRecords.length
+     ? d.dosingRecords
+     : [{
+         phase:d.phase||'Other',context:d.context||'',min:d.min,max:d.max,def:d.def,
+         unit:d.unit,stock:d.stock,stockUnit:d.stockUnit,route:d.route||'',
+         population:d.population||'adult',dosingWeight:d.dosingWeight||'TBW',
+         dosingWeightFormula:d.dosingWeightFormula||null,cloudDoseId:d.cloudDoseId||null
+       }];
+   for(const r of records){
+     rows.push({
+       source:r.cloudDoseId?'cloud':(isLocalDrug(d.id)?'local':'built_in'),
+       app_drug_id:d.id||null,
+       cloud_drug_id:d.cloudId||null,
+       cloud_dose_id:r.cloudDoseId||null,
+       generic_name:name,
+       phase:r.phase||d.phase||'Other',
+       indication:r.context||d.context||'',
+       route:r.route||d.route||'',
+       population:r.population||'adult',
+       dose_min:r.min??null,
+       dose_default:r.def??null,
+       dose_max:r.max??null,
+       dose_unit:r.unit||null,
+       stock_concentration:r.stock??null,
+       stock_unit:r.stockUnit||null,
+       dosing_weight:r.dosingWeight||'TBW',
+       dosing_weight_formula:r.dosingWeightFormula||null
+     });
+   }
+ }
+ return rows;
+};
+
 window.setCloudLibrary=(arr)=>{cloudDrugs=Array.isArray(arr)?arr:[]; try{renderCatFilters();render();renderLibraryCompact();}catch(e){console.warn(e)}};
 function findDrug(id){return allDrugs().find(d=>d.id===id)}
 function isLocalDrug(id){return localDrugs.some(d=>d.id===id)}
