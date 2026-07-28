@@ -603,3 +603,51 @@ html[data-dark="1"] .deleteDrugBtn{background:var(--soft)}
   min-height:50px;
   font-weight:750;
 }
+
+/* v0.41 Drug Library per-record controls + dilution */
+.recordHeaderV041{
+  display:flex;
+  align-items:flex-start;
+  justify-content:space-between;
+  gap:10px;
+}
+.recordTitleV041{
+  display:flex;
+  flex-direction:column;
+  gap:3px;
+  min-width:0;
+  flex:1;
+}
+.recordTitleV041>span{
+  font-size:11px;
+  color:var(--muted);
+}
+.recordCrudActions{
+  display:flex;
+  gap:6px;
+  flex-wrap:wrap;
+  flex:0 0 auto;
+}
+.recordCrudActions button{
+  min-height:34px!important;
+  padding:6px 9px!important;
+  border-radius:10px!important;
+  font-size:10px!important;
+  font-weight:850!important;
+}
+.dilutionRecordBtn{
+  background:#e8f8ff!important;
+  border-color:#abd9eb!important;
+  color:#236984!important;
+  font-weight:900!important;
+}
+html[data-dark="1"] .dilutionRecordBtn{background:var(--soft)!important}
+.phaseRecordActions{
+  display:flex;
+  gap:7px;
+  flex-wrap:wrap;
+}
+@media(max-width:560px){
+  .recordHeaderV041{flex-direction:column}
+  .recordCrudActions{width:100%}
+}

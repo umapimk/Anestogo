@@ -1083,7 +1083,16 @@ window.openGenericDrugDetail=(encodedKey,remember=true)=>{
    locked=!!rec.doseLocked;
    let c=locked?null:calc(rec);
    return `<div class="phaseRecord drugCardTheme" data-cat="${categories.join(" | ")}">
-     <div class="phaseRecordHead"><b>${r.phase||"Other"} ${rec.localVerified?'<span class="verifiedBadge">LOCAL VERIFIED</span>':(rec.verification==="SOURCE_VERIFIED"?'<span class="sourceVerifiedBadge">SOURCE VERIFIED</span>':(!locked?'<span class="verifyDoseBadge">VERIFY</span>':""))}</b><span>${r.context||""}</span></div>
+     <div class="phaseRecordHead recordHeaderV041">
+       <div class="recordTitleV041">
+         <b>${r.phase||"Other"} ${rec.localVerified?'<span class="verifiedBadge">LOCAL VERIFIED</span>':(rec.verification==="SOURCE_VERIFIED"?'<span class="sourceVerifiedBadge">SOURCE VERIFIED</span>':(!locked?'<span class="verifyDoseBadge">VERIFY</span>':""))}</b>
+         <span>${r.context||""}</span>
+       </div>
+       ${isLocalDrug(source.id)?`<div class="recordCrudActions">
+         <button class="editDrugBtn" onclick="openLocalDrugEditor('${source.id}')">✏️ Edit</button>
+         <button class="deleteDrugBtn" onclick="deleteLocalDrug('${source.id}')">🗑 Delete</button>
+       </div>`:""}
+     </div>
      ${locked?`<div class="lockedDose">🔒 DOSE LOCKED</div>`:
      `<table class="detailTable">
        <tr><td>Dose range</td><td>${r.min??rec.min}–${r.max??rec.max} ${r.unit||rec.unit}</td></tr>
@@ -1094,6 +1103,7 @@ window.openGenericDrugDetail=(encodedKey,remember=true)=>{
        <tr><td>DRAW / Pump</td><td><b>${fmt(c.vol)} mL${c.rate?((rec.unit||"").includes("/hr")?"/hr":"/min"):""}</b></td></tr>
      </table>`}
      <div class="phaseRecordActions">
+       <button class="dilutionRecordBtn" onclick='openDilutionRecord("${source.id}",${JSON.stringify(r.phase||rec.phase||"")},${JSON.stringify(r.context||rec.context||"")})'>💧 Dilution</button>
        <button class="verifyDoseBtn" onclick='openVerify("${source.id}",${JSON.stringify(r.phase||rec.phase||"")},${JSON.stringify(r.context||rec.context||"")})'>${rec.localVerified?"✏️ Edit Local Verify":(locked?"🔓 Local Verify & Unlock":(rec.verification==="SOURCE_VERIFIED"?"🔎 Review / Local Verify":"🔎 Verify this dose"))}</button>
      </div>
      <div class="evidenceActions">
@@ -1132,15 +1142,54 @@ $("clearSearchBtn").onclick=()=>{
 };
 $("showHidden").onclick=()=>{let box=document.createElement("dialog");box.innerHTML=`<form method="dialog"><div class="head"><h2>Hidden from Drug Library</h2><button>✕</button></div>${hiddenPanel()}</form>`;document.body.appendChild(box);box.addEventListener("close",()=>box.remove());box.showModal();};
 
+
+window.openDilutionRecord=(id,phase="",context="")=>{
+ let raw=findDrug(id); if(!raw)return;
+ let base=effectiveDrug(raw);
+ let records=base.dosingRecords||[];
+ let r=records.find(x=>(x.phase||"")===phase && (x.context||"")===context)
+     || records.find(x=>(x.phase||"")===phase)
+     || {phase:phase||base.phase,context:context||base.context,min:base.min,max:base.max,def:base.def,unit:base.unit,stock:base.stock,stockUnit:base.stockUnit,ref:base.ref};
+
+ dilutionDrug=drugForRecord(base,r);
+ dilutionDrug=effectiveDrug(dilutionDrug);
+
+ let c=calc(dilutionDrug);
+ $("dDrug").textContent=dilutionDrug.name;
+ $("dDose").textContent=`${fmt(c.total)} ${c.unit}${c.rate?((dilutionDrug.unit||"").includes("/hr")?"/hr":"/min"):""}`;
+ $("dStock").textContent=`${dilutionDrug.stock} ${dilutionDrug.stockUnit}`;
+
+ let prefs=JSON.parse(localStorage.getItem("anesthDilutionPrefs")||"{}");
+ let p=prefs[id+"||"+phase+"||"+context]||prefs[id]||{};
+ $("dTarget").value=p.target??dilutionDrug.preferredTarget??dilutionDrug.stock;
+ $("dFinal").value=p.finalVol??dilutionDrug.preferredFinal??10;
+ $("dRecommended").textContent=`Default: ${$("dTarget").value} ${dilutionDrug.stockUnit} (editable; local protocol may override)`;
+
+ dilutionDrug._dilutionPrefKey=id+"||"+phase+"||"+context;
+ updateDilution();
+ $("dilutionDialog").showModal();
+};
+
 window.openDilution=id=>{
- dilutionDrug=findDrug(id); let c=calc(dilutionDrug);
+ dilutionDrug=effectiveDrug(findDrug(id)); let c=calc(dilutionDrug);
  $("dDrug").textContent=dilutionDrug.name;$("dDose").textContent=`${fmt(c.total)} ${c.unit}${c.rate?(dilutionDrug.unit.includes("/hr")?"/hr":"/min"):""}`;
  $("dStock").textContent=`${dilutionDrug.stock} ${dilutionDrug.stockUnit}`;
  $("dTarget").value=dilutionDrug.preferredTarget||dilutionDrug.stock;$("dFinal").value=dilutionDrug.preferredFinal||10;
  $("dRecommended").textContent=`Default: ${dilutionDrug.preferredTarget||dilutionDrug.stock} ${dilutionDrug.stockUnit} (editable; local protocol may override)`;
  updateDilution();$("dilutionDialog").showModal();
 }
-["dTarget","dFinal","dDiluent"].forEach(id=>$(id).oninput=updateDilution);
+["dTarget","dFinal","dDiluent"].forEach(id=>$(id).oninput=()=>{
+ updateDilution();
+ if(dilutionDrug?._dilutionPrefKey){
+   let prefs=JSON.parse(localStorage.getItem("anesthDilutionPrefs")||"{}");
+   prefs[dilutionDrug._dilutionPrefKey]={
+     target:parseFloat($("dTarget").value)||"",
+     finalVol:parseFloat($("dFinal").value)||"",
+     diluent:$("dDiluent").value
+   };
+   localStorage.setItem("anesthDilutionPrefs",JSON.stringify(prefs));
+ }
+});
 function updateDilution(){
  if(!dilutionDrug)return; let target=parseFloat($("dTarget").value)||0,final=parseFloat($("dFinal").value)||0,stock=dilutionDrug.stock,c=calc(dilutionDrug);
  let drugVol=target*final/stock,dilVol=final-drugVol,draw=target>0?c.total/target:NaN;
