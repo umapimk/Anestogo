@@ -185,19 +185,75 @@ function normalizedSearch(s){
 }
 function evidenceDrugTerms(d){
   let a=[d.generic_name,d.display_name].filter(Boolean).map(String);
-  // Common formatting variants only; no pharmacologic inference is made here.
-  return [...new Set(a.flatMap(x=>[x,x.replace(/\s+/g,''),x.replace(/-/g,' ')]).map(x=>x.trim()).filter(x=>x.length>=3))];
+  let expanded=[];
+  for(let x of a){
+    let base=x.trim();
+    expanded.push(base);
+    expanded.push(base.replace(/\s+/g,''));
+    expanded.push(base.replace(/-/g,' '));
+    // Generic-name fields sometimes contain parenthetical brands or salts.
+    expanded.push(base.replace(/\([^)]*\)/g,' ').trim());
+    expanded.push(base.replace(/\b(?:hydrochloride|hcl|sodium|sulfate|sulphate|citrate|tartrate|phosphate)\b/ig,' ').replace(/\s+/g,' ').trim());
+  }
+  return [...new Set(expanded.map(x=>x.trim()).filter(x=>x.length>=3))];
+}
+function compactEvidenceSearch(s){
+  return normalizeEvidenceText(s).toLowerCase().replace(/[^a-z0-9ก-๙]+/g,'');
 }
 function findDrugMentions(page,d){
-  let lines=page.lines||[],terms=evidenceDrugTerms(d),hits=[];
+  let lines=page.lines||[],terms=evidenceDrugTerms(d),hits=[],matchedTerms=new Set();
+
+  // 1) Normal line-level matching.
   for(let i=0;i<lines.length;i++){
     let nl=normalizedSearch(lines[i]);
+    let cl=compactEvidenceSearch(lines[i]);
     for(let term of terms){
-      let nt=normalizedSearch(term);
-      if(nt && nl.includes(nt)){hits.push(i);break}
+      let nt=normalizedSearch(term),ct=compactEvidenceSearch(term);
+      if((nt && nl.includes(nt)) || (ct.length>=4 && cl.includes(ct))){
+        hits.push({lineIndex:i,term,mode:'line'});
+        matchedTerms.add(term);
+        break;
+      }
     }
   }
-  return [...new Set(hits)];
+
+  // 2) Whole-page compact matching catches PDFs that split every glyph/token,
+  // e.g. "P r o p o f o l" or fragments across table cells.
+  if(!hits.length){
+    let pageNorm=normalizedSearch(page.text||'');
+    let pageCompact=compactEvidenceSearch(page.text||'');
+    for(let term of terms){
+      let nt=normalizedSearch(term),ct=compactEvidenceSearch(term);
+      if((nt && pageNorm.includes(nt)) || (ct.length>=4 && pageCompact.includes(ct))){
+        // Find the closest line by compact containment if possible.
+        let idx=lines.findIndex(line=>{
+          let lc=compactEvidenceSearch(line);
+          return ct.length>=4 && lc.includes(ct);
+        });
+        hits.push({lineIndex:idx>=0?idx:null,term,mode:'page'});
+        matchedTerms.add(term);
+        break;
+      }
+    }
+  }
+  return {hits,matchedTerms:[...matchedTerms]};
+}
+function contextForDrugHit(page,hit,before=3,after=8){
+  let lines=page.lines||[];
+  if(Number.isInteger(hit.lineIndex)){
+    return lines.slice(Math.max(0,hit.lineIndex-before),Math.min(lines.length,hit.lineIndex+after+1)).join(' | ');
+  }
+
+  // Whole-page fallback: find the term in normalized/compact text and return
+  // a generous text window. This is only a candidate generator; human review is still required.
+  let text=page.text||'',term=hit.term||'';
+  let low=normalizeEvidenceText(text).toLowerCase();
+  let needle=normalizeEvidenceText(term).toLowerCase();
+  let pos=low.indexOf(needle);
+  if(pos>=0)return text.slice(Math.max(0,pos-700),Math.min(text.length,pos+1800)).replace(/\n+/g,' | ');
+
+  // Last-resort page context when glyph splitting prevents direct indexing.
+  return text.slice(0,2600).replace(/\n+/g,' | ');
 }
 function contextWindow(page,lineIndex,before=2,after=5){
   let lines=page.lines||[];
@@ -253,15 +309,18 @@ function inferDoseRecord(drugId,excerpt,evidenceContext=''){
   return scores[0]?.score>0?scores[0].r:null;
 }
 function analyzePages(pages){
-  let findings=[],drugs=(cloudDrugRows||[]).filter(d=>d.active!==false),foundNames=new Set();
+  let findings=[],drugs=(cloudDrugRows||[]),foundNames=new Set(),matchedTerms=new Set();
   let charCount=pages.reduce((n,p)=>n+(p.text||'').length,0);
+
   for(let pg of pages){
     for(let d of drugs){
-      let mentions=findDrugMentions(pg,d);
-      if(!mentions.length)continue;
-      foundNames.add(d.generic_name);
-      for(let lineIndex of mentions){
-        let excerpt=contextWindow(pg,lineIndex,2,6);
+      let match=findDrugMentions(pg,d);
+      if(!match.hits.length)continue;
+      foundNames.add(d.generic_name||d.display_name||'Unnamed drug');
+      match.matchedTerms.forEach(x=>matchedTerms.add(x));
+
+      for(let hit of match.hits){
+        let excerpt=contextForDrugHit(pg,hit,3,9);
         let doses=extractDoseCandidates(excerpt),weights=detectWeightBases(excerpt);
         if(!doses.length && !weights.length)continue;
 
@@ -270,33 +329,71 @@ function analyzePages(pages){
             let weight=weightNearest(excerpt,dose.idx);
             let ctx=inferEvidenceContext(excerpt,dose.idx);
             let matched=inferDoseRecord(d.id,excerpt,ctx);
-            let proposed={dose_min:dose.dose_min,dose_default:dose.dose_default,dose_max:dose.dose_max,dose_unit:dose.dose_unit};
-            if(weight){proposed.dosing_weight=weight.basis;proposed.dosing_weight_formula=weight.formula}
-            findings.push({drug:d,dose:matched,page:pg.page,excerpt:excerpt.slice(0,1100),proposed,evidenceContext:ctx});
+            let proposed={
+              dose_min:dose.dose_min,
+              dose_default:dose.dose_default,
+              dose_max:dose.dose_max,
+              dose_unit:dose.dose_unit
+            };
+            if(weight){
+              proposed.dosing_weight=weight.basis;
+              proposed.dosing_weight_formula=weight.formula;
+            }
+            findings.push({
+              drug:d,dose:matched,page:pg.page,
+              excerpt:excerpt.slice(0,1400),
+              proposed,evidenceContext:ctx,
+              matchedTerm:hit.term,matchMode:hit.mode
+            });
           }
-        } else {
-          // Weight-basis-only evidence is still useful, but it is never auto-applied unless
-          // the record can be matched and the reviewer explicitly approves it.
+        }else{
           for(let weight of weights){
-            let ctx=inferEvidenceContext(excerpt,weight.idx),matched=inferDoseRecord(d.id,excerpt,ctx);
-            findings.push({drug:d,dose:matched,page:pg.page,excerpt:excerpt.slice(0,1100),proposed:{dosing_weight:weight.basis,dosing_weight_formula:weight.formula},evidenceContext:ctx});
+            let ctx=inferEvidenceContext(excerpt,weight.idx);
+            let matched=inferDoseRecord(d.id,excerpt,ctx);
+            findings.push({
+              drug:d,dose:matched,page:pg.page,
+              excerpt:excerpt.slice(0,1400),
+              proposed:{dosing_weight:weight.basis,dosing_weight_formula:weight.formula},
+              evidenceContext:ctx,matchedTerm:hit.term,matchMode:hit.mode
+            });
           }
         }
       }
     }
   }
+
   let seen=new Set();
   findings=findings.filter(f=>{
     let k=`${f.drug.id}|${f.dose?.id||''}|${f.page}|${JSON.stringify(f.proposed)}`;
-    if(seen.has(k))return false;seen.add(k);return true;
-  }).slice(0,100);
-  return {findings,charCount,foundDrugNames:[...foundNames].sort()};
+    if(seen.has(k))return false;
+    seen.add(k);return true;
+  }).slice(0,120);
+
+  let preview=(pages.map(p=>p.text||'').join('\n').replace(/\s+/g,' ').trim()).slice(0,700);
+  return {
+    findings,
+    charCount,
+    foundDrugNames:[...foundNames].sort(),
+    matchedTerms:[...matchedTerms].sort(),
+    cloudDrugCount:drugs.length,
+    textPreview:preview
+  };
 }
 function showExtractionDiagnostic(stats){
   let el=$c('reconcileDiagnostic'); if(!el)return;
   let base=el.innerHTML||'';
-  let names=stats.foundDrugNames?.length?stats.foundDrugNames.slice(0,20).join(', '):'none';
-  el.innerHTML=base+`<div class="extractDiagDivider"></div><div><b>Text extraction</b></div><div>Extracted text: <b>${Number(stats.charCount||0).toLocaleString()} characters</b></div><div>Drug names found: <b>${esc(names)}</b></div><div>Structured candidates: <b>${stats.findings?.length||0}</b></div>`;
+  let names=stats.foundDrugNames?.length?stats.foundDrugNames.slice(0,25).join(', '):'none';
+  let terms=stats.matchedTerms?.length?stats.matchedTerms.slice(0,25).join(', '):'none';
+  let preview=stats.textPreview||'';
+  el.innerHTML=base+
+    `<div class="extractDiagDivider"></div>
+     <div><b>Text extraction / matcher</b></div>
+     <div>Extracted text: <b>${Number(stats.charCount||0).toLocaleString()} characters</b></div>
+     <div>Cloud drugs available for matching: <b>${Number(stats.cloudDrugCount||0).toLocaleString()}</b></div>
+     <div>Drug names found: <b>${esc(names)}</b></div>
+     <div>Matched terms: <b>${esc(terms)}</b></div>
+     <div>Structured candidates: <b>${stats.findings?.length||0}</b></div>
+     <details class="extractPreview"><summary>Show extracted-text preview</summary><pre>${esc(preview)}</pre></details>`;
 }
 
 async function createReconciliationRows(fileRow,findings){

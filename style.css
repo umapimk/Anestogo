@@ -699,3 +699,18 @@ html[data-dark="1"] .archiveDrugBtn,html[data-dark="1"] .restoreDrugBtn{backgrou
 #reconcileDiagnostic>div{display:flex;justify-content:space-between;gap:12px;padding:5px 0}
 #reconcileDiagnostic>div:first-child,#reconcileDiagnostic>.extractDiagDivider{display:block}
 @media(max-width:560px){#reconcileDiagnostic>div{align-items:flex-start}#reconcileDiagnostic b{text-align:right;overflow-wrap:anywhere}}
+
+/* v0.48 matcher diagnostics */
+.extractPreview{margin-top:8px}
+.extractPreview summary{cursor:pointer;font-weight:800}
+.extractPreview pre{
+  white-space:pre-wrap;
+  word-break:break-word;
+  max-height:220px;
+  overflow:auto;
+  padding:10px;
+  background:var(--soft);
+  border-radius:10px;
+  font-size:10px;
+  line-height:1.45;
+}
