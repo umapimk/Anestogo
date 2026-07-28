@@ -734,3 +734,16 @@ html[data-dark="1"] .archiveDrugBtn,html[data-dark="1"] .restoreDrugBtn{backgrou
 .evidenceExcerpt summary{cursor:pointer;font-weight:800;color:var(--accent)}
 .evidenceExcerpt blockquote{max-height:190px;overflow:auto;margin:8px 0 0}
 @media(max-width:600px){.evidenceCompareGrid{grid-template-columns:1fr}}
+
+/* v0.52–v0.55 Clinical Evidence workflow */
+.evidenceQueueToolbar{display:flex;justify-content:space-between;gap:14px;align-items:center;padding:14px;margin:0 0 14px;border:1px solid var(--line);border-radius:16px;background:var(--soft)}
+.evidenceQueueToolbar small{display:block;color:var(--muted);margin-top:3px}
+.evidenceQueueActions{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end}
+.evidenceTitleGroup{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.evidenceSelectWrap{display:inline-flex;align-items:center}
+.evidenceSelect{width:20px;height:20px}
+.clinicalEvidenceCard.hasConflict{border-color:#d6a33b}
+.conflictState{padding:4px 8px;border-radius:999px;background:#fff1cf;color:#795600;font-weight:850}
+.conflictBox{display:grid;gap:4px;padding:11px 12px;border-radius:13px;background:#fff7df;border:1px solid #e1b950;color:#715000}
+.reconcileStatus.conflict{background:#fff1cf;color:#795600}
+@media(max-width:640px){.evidenceQueueToolbar{align-items:stretch;flex-direction:column}.evidenceQueueActions{justify-content:flex-start}}

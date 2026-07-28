@@ -66,6 +66,121 @@ function currentLocalSummary(p){
   return a.filter(Boolean).join(' • ');
 }
 
+
+let selectedEvidenceIds=new Set();
+
+function normUnit(u){
+  return String(u||'').toLowerCase().replace(/\s+/g,'').replace('μ','mc').replace('µ','mc');
+}
+function numericClose(a,b){
+  if(a==null||b==null)return true;
+  let x=Number(a),y=Number(b);
+  if(!Number.isFinite(x)||!Number.isFinite(y))return false;
+  return Math.abs(x-y)<=Math.max(0.001,Math.abs(y)*0.02);
+}
+function candidateConflictInfo(r){
+  let p=r.proposed_changes||{},vars=Array.isArray(p.variants)?p.variants:[p],reasons=[];
+  let units=[...new Set(vars.map(v=>normUnit(v.dose_unit)).filter(Boolean))];
+  let weights=[...new Set(vars.map(v=>String(v.dosing_weight||'').toUpperCase()).filter(Boolean))];
+  let phases=[...new Set(vars.map(v=>canonicalEvidencePhase(v.phase||p.evidence_context)).filter(x=>x!=='unspecified'))];
+  if(units.length>1)reasons.push(`Different dose units: ${units.join(', ')}`);
+  if(weights.length>1)reasons.push(`Different weight bases: ${weights.join(', ')}`);
+  if(phases.length>1)reasons.push(`Different phases: ${phases.join(', ')}`);
+  if(vars.length>1){
+    let mins=vars.map(v=>v.dose_min).filter(v=>v!=null);
+    let maxs=vars.map(v=>v.dose_max).filter(v=>v!=null);
+    if(mins.length>1&&!mins.every(v=>numericClose(v,mins[0])))reasons.push('Different minimum doses');
+    if(maxs.length>1&&!maxs.every(v=>numericClose(v,maxs[0])))reasons.push('Different maximum doses');
+  }
+  return {conflict:reasons.length>0,reasons};
+}
+function reviewEligibility(r){
+  let p=r.proposed_changes||{},conf=candidateConflictInfo(r);
+  let confidence=Number(p.confidence_score||0);
+  let structured=Object.keys(compatibleChange({},p)).length>0;
+  let eligible=!!r.dose_record_id&&!conf.conflict&&structured&&confidence>=80&&
+    (r.status==='review_required'||r.status==='extracted');
+  return {eligible,confidence,conflict:conf.conflict,reasons:conf.reasons,structured};
+}
+function evidenceQueueChanged(id,checked){
+  if(checked)selectedEvidenceIds.add(id);else selectedEvidenceIds.delete(id);
+  updateEvidenceQueueSummary();
+}
+function updateEvidenceQueueSummary(){
+  let rows=(cloudReconciliations||[]).filter(r=>selectedEvidenceIds.has(r.id));
+  let btn=$c('bulkApproveEvidenceBtn'),sum=$c('evidenceQueueSummary');
+  if(sum)sum.textContent=rows.length?`${rows.length} eligible item(s) selected.`:'No items selected.';
+  if(btn)btn.disabled=!rows.length;
+}
+window.cloudSelectEligibleEvidence=on=>{
+  selectedEvidenceIds.clear();
+  if(on)for(let r of cloudReconciliations||[])if(reviewEligibility(r).eligible)selectedEvidenceIds.add(r.id);
+  document.querySelectorAll('.evidenceSelect').forEach(x=>x.checked=selectedEvidenceIds.has(x.value));
+  updateEvidenceQueueSummary();
+};
+function clinicalChangeSummary(dose,changes){
+  return Object.entries(changes).map(([k,v])=>`${k}: ${dose?.[k]??'—'} → ${v}`).join('\n');
+}
+async function applyReconciliationRecord(r,{skipConfirm=false}={}){
+  if(!r?.dose_record_id)throw new Error('A specific Cloud dose record is required.');
+  let eligibility=reviewEligibility(r);
+  if(!eligibility.eligible)throw new Error(
+    eligibility.conflict?`Evidence conflict: ${eligibility.reasons.join('; ')}`:
+    'This item is not eligible for direct approval.'
+  );
+  let dose=(cloudDoseRows||[]).find(x=>x.id===r.dose_record_id);
+  if(!dose)throw new Error('Dose record not found.');
+  let changes=compatibleChange(dose,r.proposed_changes||{});
+  if(!Object.keys(changes).length)throw new Error('No structured medication field is available to apply.');
+  if(!skipConfirm&&!confirm(`Approve evidence update?\n\n${clinicalChangeSummary(dose,changes)}\n\nThis updates the Cloud dose record and writes verification history.`))return false;
+
+  await api(`/rest/v1/dose_records?id=eq.${encodeURIComponent(r.dose_record_id)}`,{
+    method:'PATCH',headers:{'Prefer':'return=representation'},
+    body:JSON.stringify({...changes,updated_at:new Date().toISOString()})
+  });
+  await api('/rest/v1/verifications',{
+    method:'POST',body:JSON.stringify({
+      dose_record_id:r.dose_record_id,reference_id:r.reference_id,
+      verification_type:'source_verified',decision:'verified',
+      verified_dose_min:changes.dose_min??dose.dose_min,
+      verified_dose_default:changes.dose_default??dose.dose_default,
+      verified_dose_max:changes.dose_max??dose.dose_max,
+      verified_dose_unit:changes.dose_unit??dose.dose_unit,
+      verified_stock_concentration:changes.stock_concentration??dose.stock_concentration,
+      verified_stock_unit:changes.stock_unit??dose.stock_unit,
+      notes:`Clinician approved evidence reconciliation ${r.id}`,
+      verified_by:session.user.id,verified_at:new Date().toISOString()
+    })
+  });
+  await api(`/rest/v1/evidence_reconciliations?id=eq.${encodeURIComponent(r.id)}`,{
+    method:'PATCH',
+    body:JSON.stringify({
+      status:'approved',reviewed_by:session.user.id,
+      reviewed_at:new Date().toISOString(),applied_changes:changes,
+      review_notes:'Approved through v0.55 clinician review workflow.'
+    })
+  });
+  return true;
+}
+window.cloudBulkApproveEvidence=async()=>{
+  if(!token())return alert('Sign in first.');
+  let rows=(cloudReconciliations||[]).filter(r=>selectedEvidenceIds.has(r.id)&&reviewEligibility(r).eligible);
+  if(!rows.length)return alert('No eligible evidence items are selected.');
+  let preview=rows.slice(0,12).map(r=>{
+    let p=r.proposed_changes||{};
+    return `• ${r.matched_drug_name||'Drug'} — ${p.evidence_context||p.phase||'phase'} — ${proposedSummary(r)}`;
+  }).join('\n');
+  if(!confirm(`Approve ${rows.length} evidence update(s)?\n\n${preview}${rows.length>12?`\n• …and ${rows.length-12} more`:''}\n\nEvery item has a mapped Cloud dose record, confidence ≥80%, and no detected conflict.`))return;
+  let ok=0,errors=[];
+  for(let r of rows){
+    try{if(await applyReconciliationRecord(r,{skipConfirm:true}))ok++}
+    catch(e){errors.push(`${r.matched_drug_name||r.id}: ${e.message}`)}
+  }
+  selectedEvidenceIds.clear();
+  await refresh();
+  alert(`Bulk review complete: ${ok} approved${errors.length?`, ${errors.length} failed.\n\n${errors.slice(0,6).join('\n')}`:'.'}`);
+};
+
 function renderReconciliations(rows,refs,files){
   let el=$c('cloudReconciliationList');if(!el)return;
   let refName=Object.fromEntries((refs||[]).map(x=>[x.id,x.title]));
@@ -74,7 +189,7 @@ function renderReconciliations(rows,refs,files){
     let p=r.proposed_changes||{},dose=(cloudDoseRows||[]).find(d=>d.id===r.dose_record_id);
     let drug=(cloudDrugRows||[]).find(d=>d.id===(dose?.drug_id||r.drug_id));
     let phase=p.evidence_context||p.phase||'Unspecified phase';
-    let confidence=Number(p.confidence_score||0);
+    let eligibility=reviewEligibility(r),confidence=eligibility.confidence;
     let cloudCurrent=dose?[
       dose.phase||dose.indication||'',
       dose.dose_min!=null||dose.dose_max!=null?`${dose.dose_min??'—'}–${dose.dose_max??'—'} ${dose.dose_unit||''}`:'',
@@ -83,13 +198,26 @@ function renderReconciliations(rows,refs,files){
     let localCurrent=currentLocalSummary(p);
     let current=cloudCurrent||localCurrent||'No matching current dose record';
     let mapping=dose?'Cloud dose record matched':(localCurrent?'Built-in/local record matched; Cloud mapping required':'Manual mapping required');
-    return `<div class="cloudRow reconcileRow clinicalEvidenceCard">
+    let conflictText=eligibility.conflict?eligibility.reasons.join(' • '):'';
+    return `<div class="cloudRow reconcileRow clinicalEvidenceCard ${eligibility.conflict?'hasConflict':''}">
       <div class="reconcileRowTitle">
-        <div><b>${esc(drug?.generic_name||r.matched_drug_name||'Unmatched evidence')}</b><span class="phaseChip">${esc(phase)}</span></div>
-        ${statusBadge(r.status)}
+        <div class="evidenceTitleGroup">
+          <label class="evidenceSelectWrap" title="${eligibility.eligible?'Select for clinician approval':'Not eligible for direct approval'}">
+            <input class="evidenceSelect" type="checkbox" value="${r.id}" ${selectedEvidenceIds.has(r.id)?'checked':''}
+              ${eligibility.eligible?'':'disabled'} onchange="evidenceQueueChanged('${r.id}',this.checked)">
+          </label>
+          <b>${esc(drug?.generic_name||r.matched_drug_name||'Unmatched evidence')}</b>
+          <span class="phaseChip">${esc(phase)}</span>
+        </div>
+        ${statusBadge(eligibility.conflict&&r.status!=='approved'?'conflict':r.status)}
       </div>
       <span>${esc(refName[r.reference_id]||'Reference')} • ${esc(fileName[r.reference_file_id]||'Evidence file')}</span>
-      <div class="confidenceRow"><span>Confidence</span><strong>${confidence||'—'}${confidence?'%':''}</strong><span class="mappingState">${esc(mapping)}</span></div>
+      <div class="confidenceRow">
+        <span>Confidence</span><strong>${confidence||'—'}${confidence?'%':''}</strong>
+        <span class="mappingState">${esc(mapping)}</span>
+        ${eligibility.conflict?`<span class="conflictState">⚠ Conflict detected</span>`:''}
+      </div>
+      ${eligibility.conflict?`<div class="conflictBox"><b>Manual conflict review required</b><span>${esc(conflictText)}</span></div>`:''}
       <div class="evidenceCompareGrid">
         <div><small>Current record</small><strong>${esc(current)}</strong></div>
         <div><small>Evidence proposal</small><strong>${esc(proposedSummary(r))}</strong></div>
@@ -98,13 +226,15 @@ function renderReconciliations(rows,refs,files){
       ${r.page_reference?`<small>Page ${esc(r.page_reference)}</small>`:''}
       <div class="reconcileActions">
         ${r.reference_file_id?`<button type="button" onclick="cloudOpenEvidenceById('${r.reference_file_id}')">📎 Evidence</button>`:''}
-        ${(r.status==='review_required'||r.status==='extracted')&&r.dose_record_id?
+        ${eligibility.eligible?
           `<button class="approveBtn" type="button" onclick="cloudApproveReconciliation('${r.id}')">✓ Review & approve</button>
            <button class="rejectBtn" type="button" onclick="cloudRejectReconciliation('${r.id}')">✕ Reject</button>`:
-          `<button type="button" disabled title="A Cloud dose record must be mapped before approval">Cloud mapping required</button>`}
+          `<button type="button" disabled>${eligibility.conflict?'Resolve conflict first':'Cloud mapping required'}</button>
+           ${(r.status==='review_required'||r.status==='extracted')?`<button class="rejectBtn" type="button" onclick="cloudRejectReconciliation('${r.id}')">✕ Reject</button>`:''}`}
       </div>
     </div>`;
   }).join(''):'No reconciliation items yet.';
+  updateEvidenceQueueSummary();
 }
 
 async function extractPdfText(file){
@@ -371,10 +501,12 @@ async function prepareMatcherDrugs(){
 
 function canonicalEvidencePhase(ctx){
   let s=normalizedSearch(ctx||'');
-  if(/induction|bolus|นำสลบ/.test(s))return 'induction';
-  if(/maintenance|infusion|ต่อเนื่อง|หยด/.test(s))return 'maintenance';
-  if(/emergency|crisis|resuscitation|ฉุกเฉิน/.test(s))return 'emergency';
-  if(/sedation|procedural/.test(s))return 'sedation';
+  if(/rapid sequence|rsi/.test(s))return 'induction';
+  if(/induction|loading|initial bolus|bolus dose|นำสลบ/.test(s))return 'induction';
+  if(/maintenance|continuous infusion|infusion rate|ต่อเนื่อง|หยด/.test(s))return 'maintenance';
+  if(/emergency|crisis|resuscitation|cardiac arrest|ฉุกเฉิน/.test(s))return 'emergency';
+  if(/sedation|procedural|monitored anesthesia/.test(s))return 'sedation';
+  if(/reversal|antagonism|neuromuscular reversal/.test(s))return 'reversal';
   return 'unspecified';
 }
 function doseRowPhase(row){
@@ -718,40 +850,9 @@ function compatibleChange(current,proposed){
 window.cloudApproveReconciliation=async id=>{
   if(!token())return alert('Sign in first.');
   let r=(cloudReconciliations||[]).find(x=>x.id===id);
-  if(!r?.dose_record_id)return alert('This evidence is not matched to a specific dose record.');
-  let dose=(cloudDoseRows||[]).find(x=>x.id===r.dose_record_id);
-  if(!dose)return alert('Dose record not found.');
-  let changes=compatibleChange(dose,r.proposed_changes||{});
-  if(!Object.keys(changes).length)return alert('No structured medication field is available to apply.');
-
-  let summary=Object.entries(changes).map(([k,v])=>`${k}: ${dose[k]??'—'} → ${v}`).join('\n');
-  if(!confirm(`Approve evidence update?\n\n${summary}\n\nThis will update the Cloud dose record and create verification history.`))return;
-
   try{
-    await api(`/rest/v1/dose_records?id=eq.${encodeURIComponent(r.dose_record_id)}`,{
-      method:'PATCH',headers:{'Prefer':'return=representation'},body:JSON.stringify({...changes,updated_at:new Date().toISOString()})
-    });
-    await api('/rest/v1/verifications',{
-      method:'POST',body:JSON.stringify({
-        dose_record_id:r.dose_record_id,
-        reference_id:r.reference_id,
-        verification_type:'source_verified',
-        decision:'verified',
-        verified_dose_min:changes.dose_min??dose.dose_min,
-        verified_dose_default:changes.dose_default??dose.dose_default,
-        verified_dose_max:changes.dose_max??dose.dose_max,
-        verified_dose_unit:changes.dose_unit??dose.dose_unit,
-        verified_stock_concentration:changes.stock_concentration??dose.stock_concentration,
-        verified_stock_unit:changes.stock_unit??dose.stock_unit,
-        notes:`Approved from evidence reconciliation ${r.id}`,
-        verified_by:session.user.id,
-        verified_at:new Date().toISOString()
-      })
-    });
-    await api(`/rest/v1/evidence_reconciliations?id=eq.${encodeURIComponent(id)}`,{
-      method:'PATCH',body:JSON.stringify({status:'approved',reviewed_by:session.user.id,reviewed_at:new Date().toISOString(),applied_changes:changes})
-    });
-    await refresh();
+    let done=await applyReconciliationRecord(r);
+    if(done){selectedEvidenceIds.delete(id);await refresh()}
   }catch(e){alert('Approve failed: '+e.message)}
 };
 window.cloudRejectReconciliation=async id=>{

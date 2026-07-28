@@ -4,13 +4,13 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#f5f8fc">
-<title>Anesthculator v0.51</title>
+<title>Anesthculator v0.55</title>
 <link rel="manifest" href="./manifest.json">
 <link rel="stylesheet" href="./style.css">
 </head>
 <body>
 <header>
-  <div class="headerLeft"><button id="appBackBtn" class="appBackBtn" type="button" aria-label="Back" title="Back">← <span>Back</span></button><div class="brand"><span class="drop">💧</span><div><b>Anesthculator <small>v0.51</small></b><em>Calm OR • Thailand Edition</em></div></div></div>
+  <div class="headerLeft"><button id="appBackBtn" class="appBackBtn" type="button" aria-label="Back" title="Back">← <span>Back</span></button><div class="brand"><span class="drop">💧</span><div><b>Anesthculator <small>v0.55</small></b><em>Calm OR • Thailand Edition</em></div></div></div>
   <button id="theme">☾</button>
 </header>
 
@@ -201,7 +201,18 @@
       <div class="reconcileLegend">
         <span>UPLOADED</span><span>EXTRACTED</span><span>REVIEW REQUIRED</span><span>APPROVED</span><span>REJECTED</span>
       </div>
-      <div id="cloudReconciliationList" class="cloudList">Sign in and refresh.</div>
+      <div class="evidenceQueueToolbar">
+  <div>
+    <b>Clinician review queue</b>
+    <small id="evidenceQueueSummary">No items selected.</small>
+  </div>
+  <div class="evidenceQueueActions">
+    <button type="button" onclick="cloudSelectEligibleEvidence(true)">Select eligible</button>
+    <button type="button" onclick="cloudSelectEligibleEvidence(false)">Clear</button>
+    <button id="bulkApproveEvidenceBtn" class="approveBtn" type="button" onclick="cloudBulkApproveEvidence()" disabled>✓ Approve selected</button>
+  </div>
+</div>
+<div id="cloudReconciliationList" class="cloudList">Sign in and refresh.</div>
     </div>
 
     <div class="card cloudCard">
