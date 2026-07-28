@@ -686,3 +686,10 @@ html[data-dark="1"] .archiveDrugBtn,html[data-dark="1"] .restoreDrugBtn{backgrou
 .evidenceFileActions{display:flex;gap:8px;flex-wrap:wrap}
 .evidenceFileActions button{flex:1;min-width:130px}
 .dangerBtn{background:#fff0f1!important;border-color:#e8b7bd!important;color:#9a3744!important}
+
+/* v0.45 robust Storage upload/download diagnostics */
+.evidenceDiagnostic{margin-top:10px;padding:12px;border:1px solid var(--line);border-radius:14px;background:var(--soft);font-size:11px}
+.evidenceDiagnostic>b{display:block;margin-bottom:7px;font-size:12px}
+.evidenceDiagnostic>div{display:flex;justify-content:space-between;gap:10px;padding:4px 0;border-top:1px solid rgba(120,140,160,.16)}
+.evidenceDiagnostic>div span{color:var(--muted)}
+.evidenceDiagnostic>div strong{text-align:right;word-break:break-all}

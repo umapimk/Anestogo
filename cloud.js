@@ -101,13 +101,41 @@ async function extractXlsxText(file){
   return pages;
 }
 async function fetchEvidenceFile(fileRow){
-  const path=String(fileRow.storage_path||'').split('/').map(encodeURIComponent).join('/');
-  let r=await fetch(`${SUPABASE_URL}/storage/v1/object/authenticated/reference-files/${path}`,{
-    method:'GET',headers:{apikey:SUPABASE_KEY,Authorization:`Bearer ${token()}`,Accept:'application/octet-stream'},cache:'no-store'
+  const rawPath=String(fileRow.storage_path||'').replace(/^\/+/, '');
+  if(!rawPath)throw new Error('Evidence storage_path is empty.');
+  const path=rawPath.split('/').map(encodeURIComponent).join('/');
+  const authHeaders={apikey:SUPABASE_KEY,Authorization:`Bearer ${token()}`,Accept:'application/octet-stream'};
+  let directStatus=null,directType='',directLen='';
+
+  // First try the documented private-bucket authenticated endpoint.
+  let r=await fetch(`${SUPABASE_URL}/storage/v1/object/authenticated/reference-files/${path}?download=1`,{
+    method:'GET',headers:authHeaders,cache:'no-store'
   });
-  if(!r.ok)throw new Error(`Storage download failed (${r.status}): ${await r.text()}`);
-  let blob=await r.blob();
-  if(!blob.size)throw new Error('Downloaded file is 0 bytes even though Cloud metadata reports a file. Check the Storage object/path.');
+  directStatus=r.status; directType=r.headers.get('content-type')||''; directLen=r.headers.get('content-length')||'';
+  if(r.ok){
+    let blob=await r.blob();
+    if(blob.size>0)return blob;
+  }
+
+  // Some browsers/CDN paths can return an empty body despite a successful response.
+  // Fall back to a short-lived signed URL generated with the same authenticated user.
+  let sign=await fetch(`${SUPABASE_URL}/storage/v1/object/sign/reference-files/${path}`,{
+    method:'POST',
+    headers:{apikey:SUPABASE_KEY,Authorization:`Bearer ${token()}`,'Content-Type':'application/json'},
+    body:JSON.stringify({expiresIn:120})
+  });
+  if(!sign.ok){
+    let msg=await sign.text();
+    throw new Error(`Storage download failed. Direct=${directStatus} (${directType||'no content-type'}, length=${directLen||'unknown'}); signed URL failed (${sign.status}): ${msg}`);
+  }
+  let signed=await sign.json();
+  let signedPath=signed.signedURL||signed.signedUrl||signed.signed_url;
+  if(!signedPath)throw new Error('Supabase returned no signed URL for this evidence object.');
+  let signedUrl=/^https?:\/\//i.test(signedPath)?signedPath:`${SUPABASE_URL}/storage/v1${signedPath}`;
+  let sr=await fetch(signedUrl,{method:'GET',cache:'no-store'});
+  if(!sr.ok)throw new Error(`Signed evidence download failed (${sr.status}): ${await sr.text()}`);
+  let blob=await sr.blob();
+  if(!blob.size)throw new Error(`Downloaded file is 0 bytes. Direct endpoint status=${directStatus}; signed URL also returned 0 bytes. The Storage object itself is likely empty or points to the wrong object.`);
   return blob;
 }
 async function sha256Hex(blob){
@@ -337,35 +365,113 @@ async function refresh(){
     if(String(e.message).includes('evidence_reconciliations'))setMsg('Cloud schema needs the v0.43/v0.44 reconciliation SQL migration before reconciliation can run.');
   }
 }
+
+function fmtBytes(n){
+  n=Number(n||0);
+  if(n<1024)return `${n} B`;
+  if(n<1024*1024)return `${(n/1024).toFixed(1)} KB`;
+  return `${(n/1024/1024).toFixed(2)} MB`;
+}
+function showUploadDiagnostic(info){
+  let el=$c('uploadDiagnostic'); if(!el)return;
+  let rows=[
+    ['Selected file',fmtBytes(info.selected)],
+    ['Binary payload',fmtBytes(info.payload)],
+    ['Storage path',info.path||'—'],
+    ['Upload response',info.uploadStatus||'—'],
+    ['Downloaded verification',info.downloaded==null?'—':fmtBytes(info.downloaded)],
+    ['Verification',info.ok?'PASS ✓':'NOT COMPLETE']
+  ];
+  el.innerHTML='<b>Evidence upload diagnostic</b>'+rows.map(x=>`<div><span>${esc(x[0])}</span><strong>${esc(x[1])}</strong></div>`).join('');
+  el.hidden=false;
+}
+async function uploadEvidenceBinary(file,path){
+  let ab=await file.arrayBuffer();
+  if(!ab.byteLength)throw new Error('The selected file produced an empty binary payload. Re-select the original file from Files/Downloads, not a placeholder.');
+  if(file.size && ab.byteLength!==file.size)throw new Error(`Browser file-size mismatch: selected ${file.size} bytes but readable payload is ${ab.byteLength} bytes.`);
+
+  const encoded=String(path).split('/').map(encodeURIComponent).join('/');
+  let r=await fetch(`${SUPABASE_URL}/storage/v1/object/reference-files/${encoded}`,{
+    method:'POST',
+    headers:{
+      apikey:SUPABASE_KEY,
+      Authorization:`Bearer ${token()}`,
+      'Content-Type':file.type||'application/octet-stream',
+      'x-upsert':'false',
+      'cache-control':'3600'
+    },
+    body:ab
+  });
+  let responseText=await r.text();
+  if(!r.ok)throw new Error(`Evidence upload failed (${r.status}): ${responseText}`);
+  return {payloadBytes:ab.byteLength,status:r.status,responseText};
+}
+
 async function saveReference(){
   if(!token()){alert('Sign in first.');return}
   let title=$c('refTitle').value.trim(); if(!title){alert('Reference title is required.');return}
   let file=$c('refFile').files?.[0], fileHash=null;
+  let diag={selected:file?.size||0,payload:0,path:'',uploadStatus:'',downloaded:null,ok:false};
+  if($c('uploadDiagnostic'))$c('uploadDiagnostic').hidden=true;
   try{
-    $c('refCloudResult').textContent='Validating…';
+    $c('refCloudResult').textContent='Validating selected evidence…';
     if(file){
       if(!file.size)throw new Error('Selected evidence file is 0 bytes. Choose the original file again.');
-      fileHash=await sha256Hex(file);
+      // Force the browser to read the bytes now. This catches iCloud/File-provider placeholders before creating Reference metadata.
+      let probe=await file.arrayBuffer();
+      diag.payload=probe.byteLength;
+      showUploadDiagnostic(diag);
+      if(!probe.byteLength)throw new Error('The selected evidence file has a name/metadata but no readable bytes. Download the PDF fully to the device, then choose it again.');
+      if(probe.byteLength!==file.size)throw new Error(`Selected file reports ${file.size} bytes but Safari provided ${probe.byteLength} bytes.`);
+      fileHash=await sha256Hex(new Blob([probe],{type:file.type||'application/octet-stream'}));
       let dup=await api(`/rest/v1/reference_files?select=id,original_filename,file_size_bytes,reference_id&file_hash=eq.${encodeURIComponent(fileHash)}&limit=1`);
       if(dup?.length)throw new Error(`This exact evidence file is already stored (${dup[0].original_filename||'evidence'}). Duplicate upload was blocked.`);
     }
-    $c('refCloudResult').textContent='Saving…';
+
+    $c('refCloudResult').textContent='Saving reference…';
     let body={title,organization:$c('refOrg').value||null,edition:$c('refEdition').value||null,publication_date:$c('refDate').value||null,page_reference:$c('refPage').value||null,table_reference:$c('refTable').value||null,section_reference:$c('refSection').value||null,url:$c('refUrl').value||null,notes:$c('refNotes').value||null,source_type:$c('refType').value,created_by:session.user.id};
     let refs=await api('/rest/v1/references',{method:'POST',headers:{'Prefer':'return=representation'},body:JSON.stringify(body)}),ref=refs[0];
+
     if(file){
-      let safe=(file.name||'evidence').replace(/[^a-zA-Z0-9._-]/g,'_'),path=`${ref.id}/${crypto.randomUUID()}-${safe}`;
-      let r=await fetch(`${SUPABASE_URL}/storage/v1/object/reference-files/${path}`,{method:'POST',headers:{'apikey':SUPABASE_KEY,'Authorization':`Bearer ${token()}`,'Content-Type':file.type||'application/octet-stream','x-upsert':'false'},body:file});
-      if(!r.ok)throw new Error('Reference saved, but evidence upload failed: '+await r.text());
-      // Verify the object can really be downloaded before creating metadata.
+      let safe=(file.name||'evidence').replace(/[^a-zA-Z0-9._-]/g,'_');
+      let path=`${ref.id}/${crypto.randomUUID()}-${safe}`;
+      diag.path=path;
+      $c('refCloudResult').textContent='Uploading evidence bytes…';
+      let up=await uploadEvidenceBinary(file,path);
+      diag.payload=up.payloadBytes; diag.uploadStatus=String(up.status); showUploadDiagnostic(diag);
+
+      $c('refCloudResult').textContent='Verifying uploaded object…';
       let verifyRow={storage_path:path,file_size_bytes:file.size,mime_type:file.type||null,original_filename:file.name};
       let downloaded=await fetchEvidenceFile(verifyRow);
-      if(downloaded.size!==file.size)throw new Error(`Upload verification failed: selected ${file.size} bytes, downloaded ${downloaded.size} bytes.`);
-      await api('/rest/v1/reference_files',{method:'POST',body:JSON.stringify({reference_id:ref.id,storage_path:path,original_filename:file.name,mime_type:file.type||null,uploaded_by:session.user.id,file_size_bytes:file.size,file_hash:fileHash})});
+      diag.downloaded=downloaded.size;
+      if(downloaded.size!==up.payloadBytes){
+        showUploadDiagnostic(diag);
+        // Best-effort cleanup: do not leave a broken object + misleading metadata.
+        try{
+          let encoded=path.split('/').map(encodeURIComponent).join('/');
+          await fetch(`${SUPABASE_URL}/storage/v1/object/reference-files/${encoded}`,{method:'DELETE',headers:{apikey:SUPABASE_KEY,Authorization:`Bearer ${token()}`}});
+        }catch{}
+        throw new Error(`Upload verification failed: binary payload ${up.payloadBytes} bytes, downloaded ${downloaded.size} bytes. Broken Storage object was not registered as Evidence.`);
+      }
+      let first=new Uint8Array(await downloaded.slice(0,5).arrayBuffer());
+      let header=String.fromCharCode(...first);
+      if((file.type==='application/pdf'||/\.pdf$/i.test(file.name)) && header!=='%PDF-'){
+        showUploadDiagnostic(diag);
+        throw new Error(`Uploaded object is not a valid PDF header (received ${JSON.stringify(header)}).`);
+      }
+      diag.ok=true; showUploadDiagnostic(diag);
+      await api('/rest/v1/reference_files',{method:'POST',body:JSON.stringify({reference_id:ref.id,storage_path:path,original_filename:file.name,mime_type:file.type||null,uploaded_by:session.user.id,file_size_bytes:downloaded.size,file_hash:fileHash})});
     }
+
     if(selectedDoseId)await api('/rest/v1/verifications',{method:'POST',body:JSON.stringify({dose_record_id:selectedDoseId,reference_id:ref.id,verification_type:'source_verified',decision:'pending',notes:'Reference linked; clinical verification pending.'})});
-    $c('refCloudResult').textContent=selectedDoseId?'Saved, upload verified, and linked as PENDING evidence. Next: Reconciliation → Extract & Compare.':'Saved to cloud and upload verified. Medication data has NOT been changed. Next: Reconciliation → Extract & Compare.';
+    $c('refCloudResult').textContent=file
+      ? 'Saved. Binary upload and download verification passed. Next: Reconciliation → Extract & Compare.'
+      : 'Reference saved. No evidence file was attached.';
     await refresh();
-  }catch(e){$c('refCloudResult').textContent='Save failed: '+e.message}
+  }catch(e){
+    showUploadDiagnostic(diag);
+    $c('refCloudResult').textContent='Save failed: '+e.message;
+  }
 }
 async function createPending(){if(!selectedDoseId){alert('Open a cloud dose record in Drug Library and tap Verify first.');return}try{await api('/rest/v1/verifications',{method:'POST',body:JSON.stringify({dose_record_id:selectedDoseId,verification_type:'local_verified',decision:'pending',notes:'Pending clinician/institution review.'})});await refresh()}catch(e){alert('Could not create verification: '+e.message)}}
 window.cloudOpenEvidence=async(path,name)=>{if(!token())return alert('Sign in first.');try{let b=await fetchEvidenceFile({storage_path:path,original_filename:name});let u=URL.createObjectURL(b);window.open(u,'_blank');setTimeout(()=>URL.revokeObjectURL(u),60000)}catch(e){alert('Open evidence failed: '+e.message)}};
