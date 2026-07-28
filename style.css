@@ -693,3 +693,9 @@ html[data-dark="1"] .archiveDrugBtn,html[data-dark="1"] .restoreDrugBtn{backgrou
 .evidenceDiagnostic>div{display:flex;justify-content:space-between;gap:10px;padding:4px 0;border-top:1px solid rgba(120,140,160,.16)}
 .evidenceDiagnostic>div span{color:var(--muted)}
 .evidenceDiagnostic>div strong{text-align:right;word-break:break-all}
+
+/* v0.46 evidence text/table extraction diagnostics */
+.extractDiagDivider{border-top:1px solid var(--line);margin:9px 0 7px}
+#reconcileDiagnostic>div{display:flex;justify-content:space-between;gap:12px;padding:5px 0}
+#reconcileDiagnostic>div:first-child,#reconcileDiagnostic>.extractDiagDivider{display:block}
+@media(max-width:560px){#reconcileDiagnostic>div{align-items:flex-start}#reconcileDiagnostic b{text-align:right;overflow-wrap:anywhere}}

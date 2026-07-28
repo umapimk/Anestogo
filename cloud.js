@@ -85,8 +85,20 @@ async function extractPdfText(file){
   let pages=[],max=Math.min(doc.numPages,80);
   for(let i=1;i<=max;i++){
     let page=await doc.getPage(i),content=await page.getTextContent();
-    let txt=content.items.map(x=>x.str).join(' ');
-    pages.push({page:i,text:txt});
+    let raw=(content.items||[]).filter(x=>String(x.str||'').trim());
+    // Reconstruct rows from PDF coordinates. This is substantially more reliable
+    // for tables than joining every text fragment with a single space.
+    let rows=[];
+    for(let item of raw){
+      let x=Number(item.transform?.[4]||0), y=Number(item.transform?.[5]||0), s=String(item.str||'').trim();
+      let row=rows.find(r=>Math.abs(r.y-y)<=3.5);
+      if(!row){row={y,items:[]};rows.push(row)}
+      row.items.push({x,s});
+    }
+    rows.sort((a,b)=>b.y-a.y);
+    let lines=rows.map(r=>r.items.sort((a,b)=>a.x-b.x).map(x=>x.s).join('  ').replace(/\s+/g,' ').trim()).filter(Boolean);
+    let text=normalizeEvidenceText(lines.join('\n'));
+    pages.push({page:i,text,lines:text.split(/\n+/).filter(Boolean)});
   }
   return pages;
 }
@@ -96,132 +108,139 @@ async function extractXlsxText(file){
   let pages=[];
   wb.SheetNames.forEach((n,i)=>{
     let rows=window.XLSX.utils.sheet_to_json(wb.Sheets[n],{header:1,raw:false});
-    pages.push({page:n,text:rows.map(r=>r.join(' | ')).join('\n')});
+    let text=normalizeEvidenceText(rows.map(r=>r.join(' | ')).join('\n'));
+    pages.push({page:n,text,lines:text.split(/\n+/).filter(Boolean)});
   });
   return pages;
 }
-async function fetchEvidenceFile(fileRow){
-  const rawPath=String(fileRow.storage_path||'').replace(/^\/+/, '');
-  if(!rawPath)throw new Error('Evidence storage_path is empty.');
-  const path=rawPath.split('/').map(encodeURIComponent).join('/');
-  const authHeaders={apikey:SUPABASE_KEY,Authorization:`Bearer ${token()}`,Accept:'application/octet-stream'};
-  let directStatus=null,directType='',directLen='';
-
-  // First try the documented private-bucket authenticated endpoint.
-  let r=await fetch(`${SUPABASE_URL}/storage/v1/object/authenticated/reference-files/${path}?download=1`,{
-    method:'GET',headers:authHeaders,cache:'no-store'
-  });
-  directStatus=r.status; directType=r.headers.get('content-type')||''; directLen=r.headers.get('content-length')||'';
-  if(r.ok){
-    let blob=await r.blob();
-    if(blob.size>0)return blob;
+function normalizeEvidenceText(t){
+  return String(t||'')
+    .replace(/[\u00a0\u2007\u202f]/g,' ')
+    .replace(/[‐‑‒−]/g,'-')
+    .replace(/[–—]/g,'–')
+    .replace(/μg/gi,'mcg').replace(/µg/gi,'mcg').replace(/ug\b/gi,'mcg')
+    .replace(/\s*\/\s*/g,'/')
+    .replace(/[ \t]+/g,' ')
+    .replace(/\n[ \t]+/g,'\n')
+    .trim();
+}
+function normalizedSearch(s){
+  return normalizeEvidenceText(s).toLowerCase().replace(/[^a-z0-9ก-๙]+/g,' ').replace(/\s+/g,' ').trim();
+}
+function evidenceDrugTerms(d){
+  let a=[d.generic_name,d.display_name].filter(Boolean).map(String);
+  // Common formatting variants only; no pharmacologic inference is made here.
+  return [...new Set(a.flatMap(x=>[x,x.replace(/\s+/g,''),x.replace(/-/g,' ')]).map(x=>x.trim()).filter(x=>x.length>=3))];
+}
+function findDrugMentions(page,d){
+  let lines=page.lines||[],terms=evidenceDrugTerms(d),hits=[];
+  for(let i=0;i<lines.length;i++){
+    let nl=normalizedSearch(lines[i]);
+    for(let term of terms){
+      let nt=normalizedSearch(term);
+      if(nt && nl.includes(nt)){hits.push(i);break}
+    }
   }
-
-  // Some browsers/CDN paths can return an empty body despite a successful response.
-  // Fall back to a short-lived signed URL generated with the same authenticated user.
-  let sign=await fetch(`${SUPABASE_URL}/storage/v1/object/sign/reference-files/${path}`,{
-    method:'POST',
-    headers:{apikey:SUPABASE_KEY,Authorization:`Bearer ${token()}`,'Content-Type':'application/json'},
-    body:JSON.stringify({expiresIn:120})
-  });
-  if(!sign.ok){
-    let msg=await sign.text();
-    throw new Error(`Storage download failed. Direct=${directStatus} (${directType||'no content-type'}, length=${directLen||'unknown'}); signed URL failed (${sign.status}): ${msg}`);
+  return [...new Set(hits)];
+}
+function contextWindow(page,lineIndex,before=2,after=5){
+  let lines=page.lines||[];
+  return lines.slice(Math.max(0,lineIndex-before),Math.min(lines.length,lineIndex+after+1)).join(' | ');
+}
+function detectWeightBases(t){
+  let s=normalizeEvidenceText(t),low=s.toLowerCase(),out=[];
+  const add=(basis,formula,idx)=>out.push({basis,formula:formula||'source-defined',idx:idx<0?999999:idx});
+  let m;
+  m=/(lean body weight|\blbw\b)/i.exec(s); if(m)add('LBW',/janmahasatian/i.test(s)?'Janmahasatian':'source-defined',m.index);
+  m=/(ideal body weight|\bibw\b)/i.exec(s); if(m)add('IBW',/devine/i.test(s)?'Devine':(/lemmens/i.test(s)?'Lemmens':'source-defined'),m.index);
+  m=/(adjusted body weight|adjusted bw|\badjbw\b|\babw\b)/i.exec(s); if(m)add('AdjBW','source-defined',m.index);
+  m=/(total body weight|actual body weight|\btbw\b)/i.exec(s); if(m)add('TBW','source-defined',m.index);
+  return out.sort((a,b)=>a.idx-b.idx);
+}
+function weightNearest(text,pos){
+  let ws=detectWeightBases(text); if(!ws.length)return null;
+  return ws.map(w=>({...w,dist:Math.abs(w.idx-pos)})).sort((a,b)=>a.dist-b.dist)[0];
+}
+function extractDoseCandidates(t){
+  let s=normalizeEvidenceText(t),out=[];
+  // Captures 1.5–2.5 mg/kg, 100–200 mcg/kg/min, 0.2 mg/kg, etc.
+  let re=/(\d+(?:\.\d+)?)\s*(?:-|–|—|to)?\s*(?:(\d+(?:\.\d+)?)\s*)?(mcg|mg|g)\/kg(?:\/(min|hr|h))?/ig,m;
+  while((m=re.exec(s))){
+    let unit=m[3].toLowerCase()+'/kg'+(m[4]?'/'+(m[4].toLowerCase()==='h'?'hr':m[4].toLowerCase()):'');
+    let a=+m[1],b=m[2]!=null?+m[2]:null;
+    // Avoid treating a spaced single number as a fake range.
+    let isRange=b!=null && /(?:-|–|—|to)/i.test(m[0]);
+    out.push({idx:m.index,end:m.index+m[0].length,dose_min:isRange?a:null,dose_max:isRange?b:null,dose_default:isRange?null:a,dose_unit:unit,raw:m[0]});
   }
-  let signed=await sign.json();
-  let signedPath=signed.signedURL||signed.signedUrl||signed.signed_url;
-  if(!signedPath)throw new Error('Supabase returned no signed URL for this evidence object.');
-  let signedUrl=/^https?:\/\//i.test(signedPath)?signedPath:`${SUPABASE_URL}/storage/v1${signedPath}`;
-  let sr=await fetch(signedUrl,{method:'GET',cache:'no-store'});
-  if(!sr.ok)throw new Error(`Signed evidence download failed (${sr.status}): ${await sr.text()}`);
-  let blob=await sr.blob();
-  if(!blob.size)throw new Error(`Downloaded file is 0 bytes. Direct endpoint status=${directStatus}; signed URL also returned 0 bytes. The Storage object itself is likely empty or points to the wrong object.`);
-  return blob;
+  return out;
 }
-async function sha256Hex(blob){
-  let buf=await blob.arrayBuffer(),hash=await crypto.subtle.digest('SHA-256',buf);
-  return [...new Uint8Array(hash)].map(x=>x.toString(16).padStart(2,'0')).join('');
+function inferEvidenceContext(text,dosePos){
+  let pre=normalizeEvidenceText(text.slice(Math.max(0,dosePos-260),dosePos+60)).toLowerCase();
+  if(/maintenance|infusion|การให้ต่อเนื่อง|ยาหยด/.test(pre))return 'Maintenance / Infusion';
+  if(/induction|bolus|นำสลบ/.test(pre))return 'Induction / Bolus';
+  if(/emergency|resuscitation|crisis|ฉุกเฉิน/.test(pre))return 'Emergency';
+  return '';
 }
-async function inspectEvidenceBlob(fileRow,blob){
-  let meta=Number(fileRow.file_size_bytes||0),downloaded=blob.size||0;
-  let first=new Uint8Array(await blob.slice(0,5).arrayBuffer());
-  let header=String.fromCharCode(...first),isPdf=(fileRow.mime_type==='application/pdf'||/\.pdf$/i.test(fileRow.original_filename||''));
-  let pdfValid=!isPdf||header==='%PDF-';
-  return {meta,downloaded,isPdf,pdfValid,ready:downloaded>0&&pdfValid,header};
-}
-function showEvidenceDiagnostic(d){
-  let el=$c('reconcileDiagnostic'); if(!el)return;
-  let kb=n=>n?`${(n/1024).toFixed(n<10240?1:0)} KB`:'0 B';
-  el.innerHTML=`<div><b>Evidence diagnostic</b></div><div>Stored metadata: <b>${kb(d.meta)}</b></div><div>Downloaded file: <b>${kb(d.downloaded)}</b> ${d.downloaded?'✓':'✕'}</div>${d.isPdf?`<div>PDF header: <b>${d.pdfValid?'valid ✓':'invalid ✕'}</b></div>`:''}<div>Ready for extraction: <b>${d.ready?'YES ✓':'NO ✕'}</b></div>`;
-  el.hidden=false;
-}
-function cleanDrugName(s){return (s||'').toLowerCase().replace(/[^a-z0-9]+/g,' ').trim()}
-function nearbyText(text,start,len=1600){
-  let a=Math.max(0,start-500),b=Math.min(text.length,start+len);
-  return text.slice(a,b).replace(/\s+/g,' ').trim();
-}
-function detectWeightBasis(t){
-  let s=t.toLowerCase();
-  if(/\blean body weight\b|\blbw\b/.test(s))return {basis:'LBW',formula:/janmahasatian/i.test(t)?'Janmahasatian':'source-defined'};
-  if(/\bideal body weight\b|\bibw\b/.test(s))return {basis:'IBW',formula:/devine/i.test(t)?'Devine':(/lemmens/i.test(t)?'Lemmens':'source-defined')};
-  if(/\badjusted body weight\b|\badjbw\b|\badjusted bw\b/.test(s))return {basis:'AdjBW',formula:'source-defined'};
-  if(/\btotal body weight\b|\bactual body weight\b|\btbw\b|\babw\b/.test(s))return {basis:'TBW',formula:'source-defined'};
-  return null;
-}
-function detectDose(t){
-  // Conservative extraction: only explicit mass/kg ranges or single values.
-  let range=t.match(/(\d+(?:\.\d+)?)\s*(?:-|–|—|to)\s*(\d+(?:\.\d+)?)\s*(mcg|µg|ug|mg|g)\s*\/\s*kg(?:\s*\/\s*(min|hr|h))?/i);
-  if(range){
-    let u=range[3].toLowerCase().replace('µg','mcg').replace('ug','mcg')+'/kg'+(range[4]?'/'+(range[4].toLowerCase()==='h'?'hr':range[4].toLowerCase()):'');
-    return {dose_min:+range[1],dose_max:+range[2],dose_default:null,dose_unit:u};
-  }
-  let single=t.match(/(?:dose|bolus|induction|maintenance|administer(?:ed)?)\D{0,40}(\d+(?:\.\d+)?)\s*(mcg|µg|ug|mg|g)\s*\/\s*kg(?:\s*\/\s*(min|hr|h))?/i);
-  if(single){
-    let u=single[2].toLowerCase().replace('µg','mcg').replace('ug','mcg')+'/kg'+(single[3]?'/'+(single[3].toLowerCase()==='h'?'hr':single[3].toLowerCase()):'');
-    return {dose_default:+single[1],dose_unit:u};
-  }
-  return null;
-}
-function inferDoseRecord(drugId,excerpt){
+function inferDoseRecord(drugId,excerpt,evidenceContext=''){
   let rs=(cloudDoseRows||[]).filter(x=>x.drug_id===drugId);
   if(rs.length===1)return rs[0];
-  let s=excerpt.toLowerCase(),scores=rs.map(r=>{
+  let s=(excerpt+' '+evidenceContext).toLowerCase(),scores=rs.map(r=>{
     let score=0;
     for(let token of [r.phase,r.indication,r.route,r.population].filter(Boolean)){
       let words=String(token).toLowerCase().split(/[^a-z0-9]+/).filter(w=>w.length>3);
       for(let w of words)if(s.includes(w))score++;
     }
+    if(/induction|bolus/.test(evidenceContext.toLowerCase()) && /induction|bolus/.test(String(r.phase+' '+r.indication).toLowerCase()))score+=3;
+    if(/maintenance|infusion/.test(evidenceContext.toLowerCase()) && /maintenance|infusion/.test(String(r.phase+' '+r.indication).toLowerCase()))score+=3;
     return {r,score};
   }).sort((a,b)=>b.score-a.score);
   return scores[0]?.score>0?scores[0].r:null;
 }
 function analyzePages(pages){
-  let findings=[];
-  let drugs=(cloudDrugRows||[]).filter(d=>d.active!==false);
+  let findings=[],drugs=(cloudDrugRows||[]).filter(d=>d.active!==false),foundNames=new Set();
+  let charCount=pages.reduce((n,p)=>n+(p.text||'').length,0);
   for(let pg of pages){
-    let text=pg.text||'',low=text.toLowerCase();
     for(let d of drugs){
-      let name=String(d.generic_name||'').trim();
-      if(name.length<3)continue;
-      let idx=low.indexOf(name.toLowerCase());
-      if(idx<0)continue;
-      let excerpt=nearbyText(text,idx);
-      let weight=detectWeightBasis(excerpt),dose=detectDose(excerpt);
-      if(!weight&&!dose)continue;
-      let matched=inferDoseRecord(d.id,excerpt);
-      let proposed={...(dose||{})};
-      if(weight){proposed.dosing_weight=weight.basis;proposed.dosing_weight_formula=weight.formula}
-      findings.push({
-        drug:d, dose:matched, page:pg.page, excerpt:excerpt.slice(0,900), proposed
-      });
+      let mentions=findDrugMentions(pg,d);
+      if(!mentions.length)continue;
+      foundNames.add(d.generic_name);
+      for(let lineIndex of mentions){
+        let excerpt=contextWindow(pg,lineIndex,2,6);
+        let doses=extractDoseCandidates(excerpt),weights=detectWeightBases(excerpt);
+        if(!doses.length && !weights.length)continue;
+
+        if(doses.length){
+          for(let dose of doses){
+            let weight=weightNearest(excerpt,dose.idx);
+            let ctx=inferEvidenceContext(excerpt,dose.idx);
+            let matched=inferDoseRecord(d.id,excerpt,ctx);
+            let proposed={dose_min:dose.dose_min,dose_default:dose.dose_default,dose_max:dose.dose_max,dose_unit:dose.dose_unit};
+            if(weight){proposed.dosing_weight=weight.basis;proposed.dosing_weight_formula=weight.formula}
+            findings.push({drug:d,dose:matched,page:pg.page,excerpt:excerpt.slice(0,1100),proposed,evidenceContext:ctx});
+          }
+        } else {
+          // Weight-basis-only evidence is still useful, but it is never auto-applied unless
+          // the record can be matched and the reviewer explicitly approves it.
+          for(let weight of weights){
+            let ctx=inferEvidenceContext(excerpt,weight.idx),matched=inferDoseRecord(d.id,excerpt,ctx);
+            findings.push({drug:d,dose:matched,page:pg.page,excerpt:excerpt.slice(0,1100),proposed:{dosing_weight:weight.basis,dosing_weight_formula:weight.formula},evidenceContext:ctx});
+          }
+        }
+      }
     }
   }
-  // De-duplicate same drug+dose+proposal
   let seen=new Set();
-  return findings.filter(f=>{
-    let k=`${f.drug.id}|${f.dose?.id||''}|${JSON.stringify(f.proposed)}`;
+  findings=findings.filter(f=>{
+    let k=`${f.drug.id}|${f.dose?.id||''}|${f.page}|${JSON.stringify(f.proposed)}`;
     if(seen.has(k))return false;seen.add(k);return true;
-  }).slice(0,60);
+  }).slice(0,100);
+  return {findings,charCount,foundDrugNames:[...foundNames].sort()};
+}
+function showExtractionDiagnostic(stats){
+  let el=$c('reconcileDiagnostic'); if(!el)return;
+  let base=el.innerHTML||'';
+  let names=stats.foundDrugNames?.length?stats.foundDrugNames.slice(0,20).join(', '):'none';
+  el.innerHTML=base+`<div class="extractDiagDivider"></div><div><b>Text extraction</b></div><div>Extracted text: <b>${Number(stats.charCount||0).toLocaleString()} characters</b></div><div>Drug names found: <b>${esc(names)}</b></div><div>Structured candidates: <b>${stats.findings?.length||0}</b></div>`;
 }
 
 async function createReconciliationRows(fileRow,findings){
@@ -234,7 +253,7 @@ async function createReconciliationRows(fileRow,findings){
     status:f.dose?'review_required':'extracted',
     evidence_excerpt:f.excerpt,
     page_reference:String(f.page),
-    proposed_changes:f.proposed,
+    proposed_changes:{...f.proposed,evidence_context:f.evidenceContext||undefined},
     extracted_by:session.user.id
   }));
   if(!rows.length)return [];
@@ -260,13 +279,16 @@ async function analyzeEvidence(){
       let text=await blob.text();
       pages=[{page:1,text}];
     }
-    let findings=analyzePages(pages);
+    let analysis=analyzePages(pages);
+    showExtractionDiagnostic(analysis);
+    let findings=analysis.findings;
     if(!findings.length){
-      $c('reconcileAnalyzeResult').textContent='Extraction completed, but no conservative drug/dose/weight-basis candidate was found. Evidence remains stored; review manually.';
+      let found=analysis.foundDrugNames.length?` Drug names detected: ${analysis.foundDrugNames.join(', ')}.`:'';
+      $c('reconcileAnalyzeResult').textContent=`Text extraction completed (${analysis.charCount.toLocaleString()} characters), but no structured drug/dose/weight-basis candidate was found.${found} Evidence remains stored; review manually.`;
       return;
     }
     let created=await createReconciliationRows(fileRow,findings);
-    $c('reconcileAnalyzeResult').textContent=`Extracted ${created.length} candidate statement(s). Review each item before approval.`;
+    $c('reconcileAnalyzeResult').textContent=`Extracted ${created.length} candidate statement(s) from ${analysis.charCount.toLocaleString()} characters. Review each item before approval.`;
     await refresh();
     openCloudTab('reconcile');
   }catch(e){
