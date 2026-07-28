@@ -113,6 +113,62 @@ async function extractXlsxText(file){
   });
   return pages;
 }
+async function fetchEvidenceFile(fileRow){
+  const rawPath=String(fileRow.storage_path||'').replace(/^\/+/, '');
+  if(!rawPath)throw new Error('Evidence storage_path is empty.');
+  const path=rawPath.split('/').map(encodeURIComponent).join('/');
+  const authHeaders={apikey:SUPABASE_KEY,Authorization:`Bearer ${token()}`,Accept:'application/octet-stream'};
+  let directStatus=null,directType='',directLen='';
+
+  // First try the documented private-bucket authenticated endpoint.
+  let r=await fetch(`${SUPABASE_URL}/storage/v1/object/authenticated/reference-files/${path}?download=1`,{
+    method:'GET',headers:authHeaders,cache:'no-store'
+  });
+  directStatus=r.status; directType=r.headers.get('content-type')||''; directLen=r.headers.get('content-length')||'';
+  if(r.ok){
+    let blob=await r.blob();
+    if(blob.size>0)return blob;
+  }
+
+  // Some browsers/CDN paths can return an empty body despite a successful response.
+  // Fall back to a short-lived signed URL generated with the same authenticated user.
+  let sign=await fetch(`${SUPABASE_URL}/storage/v1/object/sign/reference-files/${path}`,{
+    method:'POST',
+    headers:{apikey:SUPABASE_KEY,Authorization:`Bearer ${token()}`,'Content-Type':'application/json'},
+    body:JSON.stringify({expiresIn:120})
+  });
+  if(!sign.ok){
+    let msg=await sign.text();
+    throw new Error(`Storage download failed. Direct=${directStatus} (${directType||'no content-type'}, length=${directLen||'unknown'}); signed URL failed (${sign.status}): ${msg}`);
+  }
+  let signed=await sign.json();
+  let signedPath=signed.signedURL||signed.signedUrl||signed.signed_url;
+  if(!signedPath)throw new Error('Supabase returned no signed URL for this evidence object.');
+  let signedUrl=/^https?:\/\//i.test(signedPath)?signedPath:`${SUPABASE_URL}/storage/v1${signedPath}`;
+  let sr=await fetch(signedUrl,{method:'GET',cache:'no-store'});
+  if(!sr.ok)throw new Error(`Signed evidence download failed (${sr.status}): ${await sr.text()}`);
+  let blob=await sr.blob();
+  if(!blob.size)throw new Error(`Downloaded file is 0 bytes. Direct endpoint status=${directStatus}; signed URL also returned 0 bytes. The Storage object itself is likely empty or points to the wrong object.`);
+  return blob;
+}
+async function sha256Hex(blob){
+  let buf=await blob.arrayBuffer(),hash=await crypto.subtle.digest('SHA-256',buf);
+  return [...new Uint8Array(hash)].map(x=>x.toString(16).padStart(2,'0')).join('');
+}
+async function inspectEvidenceBlob(fileRow,blob){
+  let meta=Number(fileRow.file_size_bytes||0),downloaded=blob.size||0;
+  let first=new Uint8Array(await blob.slice(0,5).arrayBuffer());
+  let header=String.fromCharCode(...first),isPdf=(fileRow.mime_type==='application/pdf'||/\.pdf$/i.test(fileRow.original_filename||''));
+  let pdfValid=!isPdf||header==='%PDF-';
+  return {meta,downloaded,isPdf,pdfValid,ready:downloaded>0&&pdfValid,header};
+}
+function showEvidenceDiagnostic(d){
+  let el=$c('reconcileDiagnostic'); if(!el)return;
+  let kb=n=>n?`${(n/1024).toFixed(n<10240?1:0)} KB`:'0 B';
+  el.innerHTML=`<div><b>Evidence diagnostic</b></div><div>Stored metadata: <b>${kb(d.meta)}</b></div><div>Downloaded file: <b>${kb(d.downloaded)}</b> ${d.downloaded?'✓':'✕'}</div>${d.isPdf?`<div>PDF header: <b>${d.pdfValid?'valid ✓':'invalid ✕'}</b></div>`:''}<div>Ready for extraction: <b>${d.ready?'YES ✓':'NO ✕'}</b></div>`;
+  el.hidden=false;
+}
+
 function normalizeEvidenceText(t){
   return String(t||'')
     .replace(/[\u00a0\u2007\u202f]/g,' ')
