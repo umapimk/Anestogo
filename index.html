@@ -4,13 +4,13 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#f5f8fc">
-<title>Anesthculator v0.41</title>
+<title>Anesthculator v0.43</title>
 <link rel="manifest" href="./manifest.json">
 <link rel="stylesheet" href="./style.css">
 </head>
 <body>
 <header>
-  <div class="headerLeft"><button id="appBackBtn" class="appBackBtn" type="button" aria-label="Back" title="Back">← <span>Back</span></button><div class="brand"><span class="drop">💧</span><div><b>Anesthculator <small>v0.41</small></b><em>Calm OR • Thailand Edition</em></div></div></div>
+  <div class="headerLeft"><button id="appBackBtn" class="appBackBtn" type="button" aria-label="Back" title="Back">← <span>Back</span></button><div class="brand"><span class="drop">💧</span><div><b>Anesthculator <small>v0.43</small></b><em>Calm OR • Thailand Edition</em></div></div></div>
   <button id="theme">☾</button>
 </header>
 
@@ -117,6 +117,14 @@
       <button id="manageCatsBtn">🗂 Categories</button>
       <button id="showHidden">👁 Hidden</button>
     </div>
+    <div class="libraryLifecycleRow">
+      <button id="showActiveDrugs" class="active">✅ Active</button>
+      <button id="showArchivedDrugs">📦 Archived</button>
+      <select id="searchScope">
+        <option value="current">Search current view</option>
+        <option value="all">Search Active + Archived</option>
+      </select>
+    </div>
   </div>
   <div class="libraryManage">
     <button id="exportDrugsBtn">⬆️ Export Local Drugs</button>
@@ -177,9 +185,38 @@
   <div class="head"><div><span>CLOUD LIBRARY</span><h2>☁️ Evidence & Verification Cloud</h2></div><strong id="cloudStatus">Signed out</strong></div>
   <div class="warning"><b>Privacy boundary:</b> Patient age, sex, weight, height and case calculations are never uploaded. Only Drug Library, references, verification metadata and evidence files are cloud-enabled.</div>
   <div id="cloudAuthCard" class="card cloudCard"><h3>Account</h3><p id="cloudUserText">Sign in to use the shared Drug Library.</p><div class="cloudGrid"><label>Email<input id="cloudEmail" type="email" autocomplete="email"></label><label>Password<input id="cloudPassword" type="password" autocomplete="current-password"></label></div><div class="drugActions"><button id="cloudSignIn" type="button">Sign in</button><button id="cloudSignUp" type="button">Create account</button><button id="cloudSignOut" type="button" hidden>Sign out</button><button id="cloudRefresh" type="button">↻ Refresh</button></div><p id="cloudSyncText">Sign in first.</p></div>
-  <div class="cloudTabs" role="tablist"><button data-cloudtab="references" class="active">References</button><button data-cloudtab="files">Evidence Files</button><button data-cloudtab="verifications">Verifications</button><button data-cloudtab="users">Users / Roles</button></div>
-  <div id="cloudPane-references" class="cloudPane active"><div class="card cloudCard"><h3>References</h3><div id="cloudReferencesList" class="cloudList">Sign in and refresh.</div></div><div class="card cloudCard"><h3>Add Reference</h3><p id="cloudDoseContext" class="note">Not linked to a dose record.</p><div class="cloudGrid"><label>Title<input id="refTitle"></label><label>Organization<input id="refOrg"></label><label>Edition / version<input id="refEdition"></label><label>Publication date<input id="refDate" type="date"></label><label>Page<input id="refPage"></label><label>Table<input id="refTable"></label><label>Section<input id="refSection"></label><label>Source type<select id="refType"><option>guideline</option><option>product_label</option><option>institutional_protocol</option><option>textbook</option><option>other</option></select></label></div><label>URL<input id="refUrl" type="url"></label><label>Notes<textarea id="refNotes" rows="3"></textarea></label><label>Evidence file (optional)<input id="refFile" type="file" accept=".pdf,.xlsx,.xls,image/*"></label><div class="drugActions"><button id="saveReferenceCloud" type="button">＋ Save Reference / Evidence</button></div><div id="refCloudResult" class="note"></div></div></div>
+  <div class="cloudTabs" role="tablist"><button data-cloudtab="references" class="active">References</button><button data-cloudtab="files">Evidence Files</button><button data-cloudtab="reconcile">Reconciliation</button><button data-cloudtab="verifications">Verifications</button><button data-cloudtab="users">Users / Roles</button></div>
+  <div id="cloudPane-references" class="cloudPane active"><div class="card cloudCard"><h3>References</h3><div id="cloudReferencesList" class="cloudList">Sign in and refresh.</div></div><div class="card cloudCard"><h3>Add Reference</h3><p id="cloudDoseContext" class="note">Not linked to a dose record.</p><div class="cloudGrid"><label>Title<input id="refTitle"></label><label>Organization<input id="refOrg"></label><label>Edition / version<input id="refEdition"></label><label>Publication date<input id="refDate" type="date"></label><label>Page<input id="refPage"></label><label>Table<input id="refTable"></label><label>Section<input id="refSection"></label><label>Source type<select id="refType"><option>guideline</option><option>product_label</option><option>institutional_protocol</option><option>textbook</option><option>other</option></select></label></div><label>URL<input id="refUrl" type="url"></label><label>Notes<textarea id="refNotes" rows="3"></textarea></label><label>Evidence file (optional)<input id="refFile" type="file" accept=".pdf,.xlsx,.xls,image/*"></label><div class="drugActions"><button id="saveReferenceCloud" type="button">＋ Save Reference / Evidence</button></div><div id="refCloudResult" class="note"></div><p class="note evidenceSafetyNote">Saving evidence does not change medication data. Use Reconciliation → Extract & Compare, then clinician Review/Approve.</p></div></div>
   <div id="cloudPane-files" class="cloudPane"><div class="card cloudCard"><h3>Evidence Files</h3><div id="cloudFilesList" class="cloudList">Sign in and refresh.</div></div></div>
+
+  <div id="cloudPane-reconcile" class="cloudPane">
+    <div class="card cloudCard">
+      <div class="reconcileHead">
+        <div>
+          <h3>Evidence Reconciliation</h3>
+          <p class="note">Machine-assisted extraction only. A reviewer/admin must approve before any dose record is changed.</p>
+        </div>
+        <button id="refreshReconciliation" type="button">↻ Refresh</button>
+      </div>
+      <div class="reconcileLegend">
+        <span>UPLOADED</span><span>EXTRACTED</span><span>REVIEW REQUIRED</span><span>APPROVED</span><span>REJECTED</span>
+      </div>
+      <div id="cloudReconciliationList" class="cloudList">Sign in and refresh.</div>
+    </div>
+
+    <div class="card cloudCard">
+      <h3>Analyze an uploaded evidence file</h3>
+      <p class="note">Select an evidence file already stored in Cloud, then extract candidate drug / dose / dosing-weight statements.</p>
+      <label>Evidence file
+        <select id="reconcileFileSelect"><option value="">Choose evidence file…</option></select>
+      </label>
+      <div class="drugActions">
+        <button id="analyzeEvidenceBtn" type="button">✨ Extract & Compare</button>
+      </div>
+      <div id="reconcileAnalyzeResult" class="note"></div>
+    </div>
+  </div>
+
   <div id="cloudPane-verifications" class="cloudPane"><div class="card cloudCard"><h3>Verifications</h3><p id="verificationDoseContext" class="note">Select a cloud dose record from Drug Library to filter or verify.</p><div id="cloudVerificationsList" class="cloudList">Sign in and refresh.</div><div class="drugActions"><button id="createPendingVerification" type="button">＋ Create pending verification for selected dose</button></div></div></div>
   <div id="cloudPane-users" class="cloudPane"><div class="card cloudCard"><h3>Users / Roles</h3><div id="cloudUsersList" class="cloudList">Sign in and refresh.</div></div></div>
 </section>
@@ -217,6 +254,19 @@
     <p class="note">Recommended target defaults to the stock concentration unless a verified local/preferred dilution has been defined. Custom concentration remains user-editable.</p>
   </form>
 </dialog>
+
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+
+<script type="module">
+  try {
+    const pdfjsLib = await import('https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.10.38/pdf.min.mjs');
+    pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.10.38/pdf.worker.min.mjs';
+    window.pdfjsLib = pdfjsLib;
+    window.dispatchEvent(new Event('anesth-pdfjs-ready'));
+  } catch (e) {
+    console.warn('PDF parser unavailable', e);
+  }
+</script>
 
 <script src="./app.js"></script>
 <script src="./cloud.js"></script>

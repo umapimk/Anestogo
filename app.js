@@ -270,6 +270,12 @@ function workingLine(d,c){let p=dilutionPrefs[d.id];if(!p||!p.target)return ``;l
 
 let hiddenDrugs=JSON.parse(localStorage.getItem("anesthHiddenDrugs")||"[]");
 
+let archivedLocalDrugs=JSON.parse(localStorage.getItem("anesthArchivedLocalDrugs")||"[]");
+let libraryLifecycleView=localStorage.getItem("anesthLibraryLifecycleView")||"active";
+function saveArchivedLocalDrugs(){localStorage.setItem("anesthArchivedLocalDrugs",JSON.stringify(archivedLocalDrugs))}
+function isDrugArchived(d){return !!(d && (d.active===false || d.cloudActive===false || archivedLocalDrugs.includes(d.id)))}
+
+
 let stockOverrides=JSON.parse(localStorage.getItem("anesthStockOverrides")||"{}");
 function saveStockOverrides(){localStorage.setItem("anesthStockOverrides",JSON.stringify(stockOverrides))}
 function applyStockOverride(d){
@@ -538,7 +544,7 @@ function card(d){
 }
 function phaseHiddenPanel(phase){
  let ids=phaseHiddenIds(phase);
- let a=allDrugs().filter(d=>(d.phases||[d.phase]).includes(phase)&&ids.includes(d.id));
+ let a=allDrugs().filter(d=>!isDrugArchived(d)&&(d.phases||[d.phase]).includes(phase)&&ids.includes(d.id));
  return a.length?`<div class="hiddenInline">${a.map(d=>`<div class="hiddenInlineItem"><span>${d.name}</span><button onclick="unhideDrugInPhase('${d.id}','${phase}')">Show in ${phase}</button></div>`).join("")}</div>`:"";
 }
 window.togglePhaseHidden=phase=>{
@@ -555,7 +561,7 @@ function render(){
  ];
  let html="";
  groups.forEach(([phase,title,open])=>{
-   let all=allDrugs().filter(d=>(d.phases||[d.phase]).includes(phase));
+   let all=allDrugs().filter(d=>!isDrugArchived(d)&&(d.phases||[d.phase]).includes(phase));
    let phaseHidden=phaseHiddenIds(phase);
    let visible=all.filter(d=>!phaseHidden.includes(d.id));
    let hidden=all.length-visible.length;
@@ -987,7 +993,9 @@ function renderLibraryCompact(){
  let groups=[...genericGroups().entries()].map(([key,group])=>({key,group,rep:representativeDrug(group)}))
    .filter(x=>{
      let matches=(x.rep.name+" "+drugCategories(x.rep).join(" ")+" "+(x.rep.drugClass||"")+" "+x.group.map(g=>g.context||"").join(" ")).toLowerCase().includes(q);
-     return matches && (q.length>0 || selectedCategory==="All" || drugCategories(x.rep).includes(selectedCategory));
+     let scopeAll=$("searchScope")?.value==="all";
+     let lifeMatch=scopeAll ? true : (libraryLifecycleView==="archived" ? x.group.some(isDrugArchived) : x.group.some(g=>!isDrugArchived(g)));
+     return matches && lifeMatch && (q.length>0 || selectedCategory==="All" || drugCategories(x.rep).includes(selectedCategory));
    })
    .sort((a,b)=>a.rep.name.localeCompare(b.rep.name,undefined,{sensitivity:"base"}));
 
@@ -996,10 +1004,10 @@ function renderLibraryCompact(){
  let letters=Object.keys(alpha).sort();
 
  $("libList").innerHTML=letters.length?letters.map(letter=>`<div id="alpha-${letter}"><div class="alphaTitle">${letter}</div>${alpha[letter].map(x=>{
-   let d=x.rep, hidden=x.group.some(g=>hiddenDrugs.includes(g.id));
+   let d=x.rep, hidden=x.group.some(g=>hiddenDrugs.includes(g.id)), archived=x.group.every(isDrugArchived);
    return `<button class="libDrugRow ${selectedDrugId===x.key?"active":""} ${hidden?"isHidden":""}" onclick="openGenericDrugDetail('${encodeURIComponent(x.key)}')">
    <span class="libIcon cat-${categoryKey(d)}">${drugIcon(d)}</span>
-   <span class="libText"><span class="libName">${d.name}${x.group.some(g=>isLocalDrug(g.id))?'<span class="localBadge">LOCAL</span>':""}${hidden?'<span class="hiddenBadge">HIDDEN</span>':""}</span>
+   <span class="libText"><span class="libName">${d.name}${x.group.some(g=>isLocalDrug(g.id))?'<span class="localBadge">LOCAL</span>':""}${hidden?'<span class="hiddenBadge">HIDDEN</span>':""}${archived?'<span class="archiveBadge">ARCHIVED</span>':""}</span>
    <span class="libCat">${integrityCategories(d)[0]||"Other"}${d.drugClass?` • ${d.drugClass}`:""}</span></span>
    <span class="libChevron">›</span></button>`;
  }).join("")}</div>`).join(""):'<div class="empty">No matching drugs</div>';
@@ -1088,10 +1096,11 @@ window.openGenericDrugDetail=(encodedKey,remember=true)=>{
          <b>${r.phase||"Other"} ${rec.localVerified?'<span class="verifiedBadge">LOCAL VERIFIED</span>':(rec.verification==="SOURCE_VERIFIED"?'<span class="sourceVerifiedBadge">SOURCE VERIFIED</span>':(!locked?'<span class="verifyDoseBadge">VERIFY</span>':""))}</b>
          <span>${r.context||""}</span>
        </div>
-       ${isLocalDrug(source.id)?`<div class="recordCrudActions">
-         <button class="editDrugBtn" onclick="openLocalDrugEditor('${source.id}')">✏️ Edit</button>
-         <button class="deleteDrugBtn" onclick="deleteLocalDrug('${source.id}')">🗑 Delete</button>
-       </div>`:""}
+       <div class="recordCrudActions">
+         ${isDrugArchived(source)?`<button class="restoreDrugBtn" onclick="restoreDrug('${source.id}')">↩ Restore</button>`:`<button class="archiveDrugBtn" onclick="archiveDrug('${source.id}')">📦 Archive</button>`}
+         ${isLocalDrug(source.id)?`<button class="editDrugBtn" onclick="openLocalDrugEditor('${source.id}')">✏️ Edit</button>
+         <button class="deleteDrugBtn" onclick="deleteLocalDrug('${source.id}')">🗑 Delete permanently</button>`:""}
+       </div>
      </div>
      ${locked?`<div class="lockedDose">🔒 DOSE LOCKED</div>`:
      `<table class="detailTable">
@@ -1134,6 +1143,46 @@ $("search").oninput=()=>{
  }
  renderLibraryCompact();
 };
+
+function setLifecycleView(view){
+  libraryLifecycleView=view;
+  localStorage.setItem("anesthLibraryLifecycleView",view);
+  $("showActiveDrugs")?.classList.toggle("active",view==="active");
+  $("showArchivedDrugs")?.classList.toggle("active",view==="archived");
+  renderLibraryCompact();
+}
+$("showActiveDrugs").onclick=()=>setLifecycleView("active");
+$("showArchivedDrugs").onclick=()=>setLifecycleView("archived");
+$("searchScope").onchange=()=>renderLibraryCompact();
+
+async function setCloudDrugActive(id,active){
+  if(typeof window.cloudSetDrugActive!=="function")return null;
+  try{
+    await window.cloudSetDrugActive(id,active);
+    return true;
+  }catch(e){
+    console.warn(e);
+    alert("Cloud update failed. No change was made.");
+    return false;
+  }
+}
+window.archiveDrug=async id=>{
+  let d=findDrug(id);if(!d)return;
+  if(!confirm(`Archive ${d.name}?\n\nThis removes the drug from Active Library and Plan, but keeps its reference and verification history.`))return;
+  let cloud=await setCloudDrugActive(id,false); if(cloud===false)return;
+  if(isLocalDrug(id)||cloud===null){
+    if(!archivedLocalDrugs.includes(id))archivedLocalDrugs.push(id);
+    saveArchivedLocalDrugs();
+  }
+  closeDrugDetail(); render(); renderLibraryCompact();
+};
+window.restoreDrug=async id=>{
+  let d=findDrug(id);if(!d)return;
+  let cloud=await setCloudDrugActive(id,true); if(cloud===false)return;
+  archivedLocalDrugs=archivedLocalDrugs.filter(x=>x!==id); saveArchivedLocalDrugs();
+  closeDrugDetail(); render(); renderLibraryCompact();
+};
+
 $("clearSearchBtn").onclick=()=>{
  $("search").value="";
  selectedCategory="All";

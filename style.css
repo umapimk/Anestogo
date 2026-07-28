@@ -651,3 +651,32 @@ html[data-dark="1"] .dilutionRecordBtn{background:var(--soft)!important}
   .recordHeaderV041{flex-direction:column}
   .recordCrudActions{width:100%}
 }
+
+/* v0.42 lifecycle */
+.libraryLifecycleRow{display:grid;grid-template-columns:1fr 1fr minmax(150px,1.5fr);gap:8px;width:100%}
+.libraryLifecycleRow button,.libraryLifecycleRow select{min-height:42px;border-radius:12px}
+.libraryLifecycleRow button.active{background:var(--blue);color:#fff;border-color:var(--blue)}
+.archiveBadge{display:inline-block;border-radius:999px;padding:4px 7px;background:#eee8ff;color:#7357a8;font-size:9px;font-weight:900;margin-left:5px}
+.archiveDrugBtn{background:#f3efff!important;border-color:#cec1ef!important;color:#6d56a3!important}
+.restoreDrugBtn{background:#e9f7ee!important;border-color:#b7ddc3!important;color:#33724a!important}
+html[data-dark="1"] .archiveDrugBtn,html[data-dark="1"] .restoreDrugBtn{background:var(--soft)!important}
+@media(max-width:560px){.libraryLifecycleRow{grid-template-columns:1fr 1fr}.libraryLifecycleRow select{grid-column:1/-1}}
+
+/* v0.43 Evidence Ingestion & Reconciliation */
+.evidenceSafetyNote{margin-top:10px;border-left:4px solid #d9aa40;padding-left:10px}
+.reconcileHead{display:flex;justify-content:space-between;align-items:flex-start;gap:10px}
+.reconcileLegend{display:flex;gap:6px;flex-wrap:wrap;margin:10px 0}
+.reconcileLegend span,.reconcileStatus{font-size:9px;font-weight:900;border-radius:999px;padding:5px 8px;background:var(--soft);letter-spacing:.03em}
+.reconcileStatus.review_required{background:#fff2c8;color:#775710}
+.reconcileStatus.approved{background:#e5f6eb;color:#276641}
+.reconcileStatus.rejected{background:#ffe8ea;color:#983b46}
+.reconcileStatus.extracted{background:#e8f3ff;color:#35688e}
+.reconcileStatus.uploaded{background:#eeeef4;color:#5d6371}
+.reconcileRow{gap:6px}
+.reconcileRowTitle{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.reconcileRow blockquote{margin:5px 0;padding:10px 12px;border-left:3px solid #9bb7d3;background:var(--soft);border-radius:8px;font-size:11px;line-height:1.45}
+.reconcileActions{display:flex;gap:7px;flex-wrap:wrap;margin-top:4px}
+.reconcileActions .approveBtn{background:#e6f7ec!important;border-color:#aedabf!important;color:#286a41!important;font-weight:900}
+.reconcileActions .rejectBtn{background:#fff0f1!important;border-color:#e8b7bd!important;color:#9a3744!important;font-weight:900}
+#reconcileAnalyzeResult{margin-top:10px}
+@media(max-width:560px){.reconcileHead{flex-direction:column}.reconcileRowTitle{align-items:flex-start;flex-direction:column}}

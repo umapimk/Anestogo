@@ -5,6 +5,9 @@ const SUPABASE_KEY='sb_publishable_A2NLYpy1dt1D30lwa_S3bg_656DfnPH';
 const SESSION_KEY='anesthCloudSessionV033';
 const $c=id=>document.getElementById(id); let session=JSON.parse(localStorage.getItem(SESSION_KEY)||'null'); let selectedDoseId=null,selectedDrugName='';
 const token=()=>session?.access_token||null;
+
+let cloudDrugRows=[], cloudDoseRows=[], cloudReferences=[], cloudEvidenceFiles=[], cloudReconciliations=[], cloudProfiles=[];
+
 function headers(extra={}){return {'apikey':SUPABASE_KEY,'Authorization':`Bearer ${token()||SUPABASE_KEY}`,'Content-Type':'application/json',...extra}}
 async function api(path,opt={}){let r=await fetch(SUPABASE_URL+path,{...opt,headers:headers(opt.headers||{})});let text=await r.text(),data;try{data=text?JSON.parse(text):null}catch{data=text}if(!r.ok)throw new Error(data?.message||data?.msg||data?.error_description||data?.error||`${r.status} ${r.statusText}`);return data}
 function esc(x){return String(x??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]))}
@@ -13,16 +16,324 @@ function authUI(){let on=!!token();$c('cloudStatus').textContent=on?'Connected':
 async function signIn(){try{let email=$c('cloudEmail').value.trim(),password=$c('cloudPassword').value;session=await api('/auth/v1/token?grant_type=password',{method:'POST',body:JSON.stringify({email,password})});localStorage.setItem(SESSION_KEY,JSON.stringify(session));authUI();await refresh()}catch(e){alert('Sign in failed: '+e.message)}}
 async function signUp(){try{let email=$c('cloudEmail').value.trim(),password=$c('cloudPassword').value;let x=await api('/auth/v1/signup',{method:'POST',body:JSON.stringify({email,password})});if(x?.access_token){session=x;localStorage.setItem(SESSION_KEY,JSON.stringify(x));authUI();await refresh()}else alert('Account created. Check your email if confirmation is enabled, then sign in.')}catch(e){alert('Create account failed: '+e.message)}}
 function signOut(){session=null;localStorage.removeItem(SESSION_KEY);window.setCloudLibrary?.([]);authUI();setMsg('Signed out. Built-in and local libraries remain available.')}
-function mapCloud(drugs,doses){let by={};for(let x of doses||[])(by[x.drug_id]??=[]).push(x);return (drugs||[]).map(d=>{let rs=by[d.id]||[],r=rs[0]||{};return {id:'cloud-'+d.id,cloudId:d.id,name:d.generic_name,displayName:d.display_name,category:d.primary_category||'Other',categories:[d.primary_category||'Other'],drugClass:d.drug_class||'',phase:r.phase||'Other',phases:[...new Set(rs.map(x=>x.phase).filter(Boolean))],context:r.indication||'',min:r.dose_min,max:r.dose_max,def:r.dose_default,unit:r.dose_unit,stock:r.stock_concentration,stockUnit:r.stock_unit,ref:'Cloud Library • '+(r.status||'dose_locked'),doseLocked:r.status==='dose_locked',checked:['source_verified','local_verified'].includes(r.status),verification:(r.status||'').toUpperCase(),cloudDoseId:r.id,dosingRecords:rs.map(x=>({cloudDoseId:x.id,phase:x.phase||'Other',context:x.indication||'',min:x.dose_min,max:x.dose_max,def:x.dose_default,unit:x.dose_unit,stock:x.stock_concentration,stockUnit:x.stock_unit,ref:'Cloud • '+x.status,route:x.route,population:x.population,dosingWeight:x.dosing_weight||'TBW',dosingWeightFormula:x.dosing_weight_formula||null}))}})}
+function mapCloud(drugs,doses){let by={};for(let x of doses||[])(by[x.drug_id]??=[]).push(x);return (drugs||[]).map(d=>{let rs=by[d.id]||[],r=rs[0]||{};return {id:'cloud-'+d.id,cloudId:d.id,active:d.active!==false,cloudActive:d.active!==false,name:d.generic_name,displayName:d.display_name,category:d.primary_category||'Other',categories:[d.primary_category||'Other'],drugClass:d.drug_class||'',phase:r.phase||'Other',phases:[...new Set(rs.map(x=>x.phase).filter(Boolean))],context:r.indication||'',min:r.dose_min,max:r.dose_max,def:r.dose_default,unit:r.dose_unit,stock:r.stock_concentration,stockUnit:r.stock_unit,ref:'Cloud Library • '+(r.status||'dose_locked'),doseLocked:r.status==='dose_locked',checked:['source_verified','local_verified'].includes(r.status),verification:(r.status||'').toUpperCase(),cloudDoseId:r.id,dosingRecords:rs.map(x=>({cloudDoseId:x.id,phase:x.phase||'Other',context:x.indication||'',min:x.dose_min,max:x.dose_max,def:x.dose_default,unit:x.dose_unit,stock:x.stock_concentration,stockUnit:x.stock_unit,ref:'Cloud • '+x.status,route:x.route,population:x.population,dosingWeight:x.dosing_weight||'TBW',dosingWeightFormula:x.dosing_weight_formula||null}))}})}
 function renderRefs(refs){$c('cloudReferencesList').innerHTML=refs.length?refs.map(r=>`<div class="cloudRow"><b>${esc(r.title)}</b><span>${esc(r.organization||'')} ${esc(r.edition||'')}</span><small>${esc(r.publication_date||'')} ${esc(r.page_reference?'• p. '+r.page_reference:'')}</small></div>`).join(''):'No references yet.'}
 function renderFiles(files,refs){let names=Object.fromEntries(refs.map(r=>[r.id,r.title]));$c('cloudFilesList').innerHTML=files.length?files.map(f=>`<div class="cloudRow"><b>${esc(f.original_filename||'Evidence file')}</b><span>${esc(names[f.reference_id]||'Reference')}</span><small>${esc(f.mime_type||'')} ${f.file_size_bytes?`• ${Math.round(f.file_size_bytes/1024)} KB`:''}</small><button type="button" onclick="cloudOpenEvidence('${f.storage_path.replace(/'/g,"\\'")}','${(f.original_filename||'evidence').replace(/'/g,"\\'")}')">Open evidence</button></div>`).join(''):'No evidence files yet.'}
 function renderVerifications(vs,refs){let names=Object.fromEntries(refs.map(r=>[r.id,r.title]));let arr=selectedDoseId?vs.filter(v=>v.dose_record_id===selectedDoseId):vs;$c('cloudVerificationsList').innerHTML=arr.length?arr.map(v=>`<div class="cloudRow"><b>${esc(v.verification_type)} • ${esc(v.decision)}</b><span>${esc(names[v.reference_id]||'No reference linked')}</span><small>${esc(v.verified_at||v.created_at||'')} ${v.notes?'• '+esc(v.notes):''}</small></div>`).join(''):(selectedDoseId?'No verification history for this dose.':'No verifications yet.')}
 function renderUsers(ps){$c('cloudUsersList').innerHTML=ps.length?ps.map(p=>`<div class="cloudRow"><b>${esc(p.display_name||p.id)}</b><span class="roleBadge">${esc(p.role)}</span></div>`).join(''):'No profiles visible. Admin can enable shared profile visibility with the v0.39 SQL policy.'}
-async function refresh(){if(!token()){setMsg('Sign in first.');return}try{setMsg('Syncing…');let [drugs,doses,refs,files,vs,profiles]=await Promise.all([api('/rest/v1/drugs?select=*&active=eq.true&order=generic_name.asc'),api('/rest/v1/dose_records?select=*&order=created_at.asc'),api('/rest/v1/references?select=*&order=created_at.desc'),api('/rest/v1/reference_files?select=*&order=created_at.desc'),api('/rest/v1/verifications?select=*&order=created_at.desc'),api('/rest/v1/profiles?select=id,display_name,role&order=created_at.asc')]);window.setCloudLibrary?.(mapCloud(drugs,doses));renderRefs(refs);renderFiles(files,refs);renderVerifications(vs,refs);renderUsers(profiles);let me=profiles.find(x=>x.id===session.user.id),role=me?.role||'viewer';$c('cloudStatus').textContent='Connected • '+role;$c('cloudUserText').textContent=`${session.user.email} • ${role}`;setMsg(`Cloud ready: ${drugs.length} drugs • ${refs.length} references • ${files.length} files • ${vs.length} verifications.`)}catch(e){setMsg('Sync failed: '+e.message)}}
-async function saveReference(){if(!token()){alert('Sign in first.');return}let title=$c('refTitle').value.trim();if(!title){alert('Reference title is required.');return}try{$c('refCloudResult').textContent='Saving…';let body={title,organization:$c('refOrg').value||null,edition:$c('refEdition').value||null,publication_date:$c('refDate').value||null,page_reference:$c('refPage').value||null,table_reference:$c('refTable').value||null,section_reference:$c('refSection').value||null,url:$c('refUrl').value||null,notes:$c('refNotes').value||null,source_type:$c('refType').value,created_by:session.user.id};let refs=await api('/rest/v1/references',{method:'POST',headers:{'Prefer':'return=representation'},body:JSON.stringify(body)}),ref=refs[0],file=$c('refFile').files?.[0];if(file){let safe=(file.name||'evidence').replace(/[^a-zA-Z0-9._-]/g,'_'),path=`${ref.id}/${crypto.randomUUID()}-${safe}`;let r=await fetch(`${SUPABASE_URL}/storage/v1/object/reference-files/${path}`,{method:'POST',headers:{'apikey':SUPABASE_KEY,'Authorization':`Bearer ${token()}`,'Content-Type':file.type||'application/octet-stream','x-upsert':'false'},body:file});if(!r.ok)throw new Error('Reference saved, but evidence upload failed: '+await r.text());await api('/rest/v1/reference_files',{method:'POST',body:JSON.stringify({reference_id:ref.id,storage_path:path,original_filename:file.name,mime_type:file.type||null,uploaded_by:session.user.id,file_size_bytes:file.size})})}if(selectedDoseId){await api('/rest/v1/verifications',{method:'POST',body:JSON.stringify({dose_record_id:selectedDoseId,reference_id:ref.id,verification_type:'source_verified',decision:'pending',notes:'Reference linked; clinical verification pending.'})})}$c('refCloudResult').textContent=selectedDoseId?'Saved and linked to selected dose as PENDING verification.':'Saved to cloud successfully.';await refresh()}catch(e){$c('refCloudResult').textContent='Save failed: '+e.message}}
+
+function fillReconcileFileSelect(files,refs){
+  let sel=$c('reconcileFileSelect'); if(!sel)return;
+  let titles=Object.fromEntries((refs||[]).map(r=>[r.id,r.title]));
+  let current=sel.value;
+  sel.innerHTML='<option value="">Choose evidence file…</option>'+(files||[]).map(f=>
+    `<option value="${esc(f.id)}">${esc(f.original_filename||'Evidence file')} — ${esc(titles[f.reference_id]||'Reference')}</option>`
+  ).join('');
+  if([...sel.options].some(o=>o.value===current))sel.value=current;
+}
+
+function statusBadge(s){
+  let v=(s||'uploaded').toUpperCase().replaceAll('_',' ');
+  return `<span class="reconcileStatus ${esc((s||'uploaded').toLowerCase())}">${esc(v)}</span>`;
+}
+function proposedSummary(r){
+  let p=r.proposed_changes||{};
+  let a=[];
+  if(p.dose_min!=null||p.dose_max!=null){
+    let range=(p.dose_min!=null&&p.dose_max!=null)?`${p.dose_min}–${p.dose_max}`:(p.dose_default??p.dose_min??p.dose_max);
+    a.push(`Dose ${range}${p.dose_unit?' '+p.dose_unit:''}`);
+  } else if(p.dose_default!=null) a.push(`Dose ${p.dose_default}${p.dose_unit?' '+p.dose_unit:''}`);
+  if(p.dosing_weight)a.push(`Weight basis ${p.dosing_weight}`);
+  if(p.stock_concentration!=null)a.push(`Stock ${p.stock_concentration}${p.stock_unit?' '+p.stock_unit:''}`);
+  return a.join(' • ')||'No structured change extracted';
+}
+
+function renderReconciliations(rows,refs,files){
+  let el=$c('cloudReconciliationList'); if(!el)return;
+  let refName=Object.fromEntries((refs||[]).map(x=>[x.id,x.title]));
+  let fileName=Object.fromEntries((files||[]).map(x=>[x.id,x.original_filename]));
+  el.innerHTML=rows.length?rows.map(r=>{
+    let dose=(cloudDoseRows||[]).find(d=>d.id===r.dose_record_id);
+    let drug=(cloudDrugRows||[]).find(d=>d.id===(dose?.drug_id||r.drug_id));
+    let current=dose?[
+      dose.dose_min!=null||dose.dose_max!=null?`Dose ${dose.dose_min??'—'}–${dose.dose_max??'—'} ${dose.dose_unit||''}`:'',
+      `Weight ${dose.dosing_weight||'TBW'}`,
+      dose.stock_concentration!=null?`Stock ${dose.stock_concentration} ${dose.stock_unit||''}`:''
+    ].filter(Boolean).join(' • '):'Not matched to a specific dose record';
+
+    return `<div class="cloudRow reconcileRow">
+      <div class="reconcileRowTitle"><b>${esc(drug?.generic_name||r.matched_drug_name||'Unmatched evidence')}</b>${statusBadge(r.status)}</div>
+      <span>${esc(refName[r.reference_id]||'Reference')} • ${esc(fileName[r.reference_file_id]||'Evidence file')}</span>
+      <small><b>Current:</b> ${esc(current)}</small>
+      <small><b>Extracted:</b> ${esc(proposedSummary(r))}</small>
+      ${r.evidence_excerpt?`<blockquote>${esc(r.evidence_excerpt)}</blockquote>`:''}
+      ${r.page_reference?`<small>Page ${esc(r.page_reference)}</small>`:''}
+      <div class="reconcileActions">
+        ${r.reference_file_id?`<button type="button" onclick="cloudOpenEvidenceById('${r.reference_file_id}')">📎 Evidence</button>`:''}
+        ${(r.status==='review_required'||r.status==='extracted')&&r.dose_record_id?
+          `<button class="approveBtn" type="button" onclick="cloudApproveReconciliation('${r.id}')">✓ Approve update</button>
+           <button class="rejectBtn" type="button" onclick="cloudRejectReconciliation('${r.id}')">✕ Reject</button>`:''}
+      </div>
+    </div>`;
+  }).join(''):'No reconciliation items yet.';
+}
+
+async function extractPdfText(file){
+  if(!window.pdfjsLib)throw new Error('PDF parser has not loaded. Check internet/CDN access and try again.');
+  let data=await file.arrayBuffer();
+  let doc=await window.pdfjsLib.getDocument({data}).promise;
+  let pages=[],max=Math.min(doc.numPages,80);
+  for(let i=1;i<=max;i++){
+    let page=await doc.getPage(i),content=await page.getTextContent();
+    let txt=content.items.map(x=>x.str).join(' ');
+    pages.push({page:i,text:txt});
+  }
+  return pages;
+}
+async function extractXlsxText(file){
+  if(!window.XLSX)throw new Error('Excel parser has not loaded.');
+  let data=await file.arrayBuffer(),wb=window.XLSX.read(data,{type:'array'});
+  let pages=[];
+  wb.SheetNames.forEach((n,i)=>{
+    let rows=window.XLSX.utils.sheet_to_json(wb.Sheets[n],{header:1,raw:false});
+    pages.push({page:n,text:rows.map(r=>r.join(' | ')).join('\n')});
+  });
+  return pages;
+}
+async function fetchEvidenceFile(fileRow){
+  let r=await fetch(`${SUPABASE_URL}/storage/v1/object/authenticated/reference-files/${fileRow.storage_path}`,{
+    headers:{apikey:SUPABASE_KEY,Authorization:`Bearer ${token()}`}
+  });
+  if(!r.ok)throw new Error(await r.text());
+  return await r.blob();
+}
+function cleanDrugName(s){return (s||'').toLowerCase().replace(/[^a-z0-9]+/g,' ').trim()}
+function nearbyText(text,start,len=1600){
+  let a=Math.max(0,start-500),b=Math.min(text.length,start+len);
+  return text.slice(a,b).replace(/\s+/g,' ').trim();
+}
+function detectWeightBasis(t){
+  let s=t.toLowerCase();
+  if(/\blean body weight\b|\blbw\b/.test(s))return {basis:'LBW',formula:/janmahasatian/i.test(t)?'Janmahasatian':'source-defined'};
+  if(/\bideal body weight\b|\bibw\b/.test(s))return {basis:'IBW',formula:/devine/i.test(t)?'Devine':(/lemmens/i.test(t)?'Lemmens':'source-defined')};
+  if(/\badjusted body weight\b|\badjbw\b|\badjusted bw\b/.test(s))return {basis:'AdjBW',formula:'source-defined'};
+  if(/\btotal body weight\b|\bactual body weight\b|\btbw\b|\babw\b/.test(s))return {basis:'TBW',formula:'source-defined'};
+  return null;
+}
+function detectDose(t){
+  // Conservative extraction: only explicit mass/kg ranges or single values.
+  let range=t.match(/(\d+(?:\.\d+)?)\s*(?:-|–|—|to)\s*(\d+(?:\.\d+)?)\s*(mcg|µg|ug|mg|g)\s*\/\s*kg(?:\s*\/\s*(min|hr|h))?/i);
+  if(range){
+    let u=range[3].toLowerCase().replace('µg','mcg').replace('ug','mcg')+'/kg'+(range[4]?'/'+(range[4].toLowerCase()==='h'?'hr':range[4].toLowerCase()):'');
+    return {dose_min:+range[1],dose_max:+range[2],dose_default:null,dose_unit:u};
+  }
+  let single=t.match(/(?:dose|bolus|induction|maintenance|administer(?:ed)?)\D{0,40}(\d+(?:\.\d+)?)\s*(mcg|µg|ug|mg|g)\s*\/\s*kg(?:\s*\/\s*(min|hr|h))?/i);
+  if(single){
+    let u=single[2].toLowerCase().replace('µg','mcg').replace('ug','mcg')+'/kg'+(single[3]?'/'+(single[3].toLowerCase()==='h'?'hr':single[3].toLowerCase()):'');
+    return {dose_default:+single[1],dose_unit:u};
+  }
+  return null;
+}
+function inferDoseRecord(drugId,excerpt){
+  let rs=(cloudDoseRows||[]).filter(x=>x.drug_id===drugId);
+  if(rs.length===1)return rs[0];
+  let s=excerpt.toLowerCase(),scores=rs.map(r=>{
+    let score=0;
+    for(let token of [r.phase,r.indication,r.route,r.population].filter(Boolean)){
+      let words=String(token).toLowerCase().split(/[^a-z0-9]+/).filter(w=>w.length>3);
+      for(let w of words)if(s.includes(w))score++;
+    }
+    return {r,score};
+  }).sort((a,b)=>b.score-a.score);
+  return scores[0]?.score>0?scores[0].r:null;
+}
+function analyzePages(pages){
+  let findings=[];
+  let drugs=(cloudDrugRows||[]).filter(d=>d.active!==false);
+  for(let pg of pages){
+    let text=pg.text||'',low=text.toLowerCase();
+    for(let d of drugs){
+      let name=String(d.generic_name||'').trim();
+      if(name.length<3)continue;
+      let idx=low.indexOf(name.toLowerCase());
+      if(idx<0)continue;
+      let excerpt=nearbyText(text,idx);
+      let weight=detectWeightBasis(excerpt),dose=detectDose(excerpt);
+      if(!weight&&!dose)continue;
+      let matched=inferDoseRecord(d.id,excerpt);
+      let proposed={...(dose||{})};
+      if(weight){proposed.dosing_weight=weight.basis;proposed.dosing_weight_formula=weight.formula}
+      findings.push({
+        drug:d, dose:matched, page:pg.page, excerpt:excerpt.slice(0,900), proposed
+      });
+    }
+  }
+  // De-duplicate same drug+dose+proposal
+  let seen=new Set();
+  return findings.filter(f=>{
+    let k=`${f.drug.id}|${f.dose?.id||''}|${JSON.stringify(f.proposed)}`;
+    if(seen.has(k))return false;seen.add(k);return true;
+  }).slice(0,60);
+}
+
+async function createReconciliationRows(fileRow,findings){
+  let rows=findings.map(f=>({
+    reference_id:fileRow.reference_id,
+    reference_file_id:fileRow.id,
+    drug_id:f.drug.id,
+    dose_record_id:f.dose?.id||null,
+    matched_drug_name:f.drug.generic_name,
+    status:f.dose?'review_required':'extracted',
+    evidence_excerpt:f.excerpt,
+    page_reference:String(f.page),
+    proposed_changes:f.proposed,
+    extracted_by:session.user.id
+  }));
+  if(!rows.length)return [];
+  return await api('/rest/v1/evidence_reconciliations',{
+    method:'POST',headers:{'Prefer':'return=representation'},body:JSON.stringify(rows)
+  });
+}
+
+async function analyzeEvidence(){
+  if(!token())return alert('Sign in first.');
+  let id=$c('reconcileFileSelect')?.value;
+  let fileRow=(cloudEvidenceFiles||[]).find(f=>f.id===id);
+  if(!fileRow)return alert('Choose an evidence file.');
+  try{
+    $c('reconcileAnalyzeResult').textContent='Downloading and extracting evidence…';
+    let blob=await fetchEvidenceFile(fileRow);
+    let filename=(fileRow.original_filename||'').toLowerCase(),pages;
+    if(filename.endsWith('.pdf')||fileRow.mime_type==='application/pdf')pages=await extractPdfText(blob);
+    else if(/\.(xlsx|xls|csv)$/.test(filename))pages=await extractXlsxText(blob);
+    else {
+      let text=await blob.text();
+      pages=[{page:1,text}];
+    }
+    let findings=analyzePages(pages);
+    if(!findings.length){
+      $c('reconcileAnalyzeResult').textContent='Extraction completed, but no conservative drug/dose/weight-basis candidate was found. Evidence remains stored; review manually.';
+      return;
+    }
+    let created=await createReconciliationRows(fileRow,findings);
+    $c('reconcileAnalyzeResult').textContent=`Extracted ${created.length} candidate statement(s). Review each item before approval.`;
+    await refresh();
+    openCloudTab('reconcile');
+  }catch(e){
+    $c('reconcileAnalyzeResult').textContent='Analysis failed: '+e.message;
+  }
+}
+
+window.cloudOpenEvidenceById=async id=>{
+  let f=(cloudEvidenceFiles||[]).find(x=>x.id===id);
+  if(!f)return alert('Evidence file not found.');
+  return window.cloudOpenEvidence(f.storage_path,f.original_filename||'evidence');
+};
+
+function compatibleChange(current,proposed){
+  // Only fields explicitly extracted are changed.
+  let allowed=['dose_min','dose_default','dose_max','dose_unit','dosing_weight','dosing_weight_formula','stock_concentration','stock_unit'];
+  let out={};
+  for(let k of allowed)if(proposed?.[k]!==undefined&&proposed[k]!==null&&proposed[k]!=='')out[k]=proposed[k];
+  return out;
+}
+window.cloudApproveReconciliation=async id=>{
+  if(!token())return alert('Sign in first.');
+  let r=(cloudReconciliations||[]).find(x=>x.id===id);
+  if(!r?.dose_record_id)return alert('This evidence is not matched to a specific dose record.');
+  let dose=(cloudDoseRows||[]).find(x=>x.id===r.dose_record_id);
+  if(!dose)return alert('Dose record not found.');
+  let changes=compatibleChange(dose,r.proposed_changes||{});
+  if(!Object.keys(changes).length)return alert('No structured medication field is available to apply.');
+
+  let summary=Object.entries(changes).map(([k,v])=>`${k}: ${dose[k]??'—'} → ${v}`).join('\n');
+  if(!confirm(`Approve evidence update?\n\n${summary}\n\nThis will update the Cloud dose record and create verification history.`))return;
+
+  try{
+    await api(`/rest/v1/dose_records?id=eq.${encodeURIComponent(r.dose_record_id)}`,{
+      method:'PATCH',headers:{'Prefer':'return=representation'},body:JSON.stringify({...changes,updated_at:new Date().toISOString()})
+    });
+    await api('/rest/v1/verifications',{
+      method:'POST',body:JSON.stringify({
+        dose_record_id:r.dose_record_id,
+        reference_id:r.reference_id,
+        verification_type:'source_verified',
+        decision:'verified',
+        verified_dose_min:changes.dose_min??dose.dose_min,
+        verified_dose_default:changes.dose_default??dose.dose_default,
+        verified_dose_max:changes.dose_max??dose.dose_max,
+        verified_dose_unit:changes.dose_unit??dose.dose_unit,
+        verified_stock_concentration:changes.stock_concentration??dose.stock_concentration,
+        verified_stock_unit:changes.stock_unit??dose.stock_unit,
+        notes:`Approved from evidence reconciliation ${r.id}`,
+        verified_by:session.user.id,
+        verified_at:new Date().toISOString()
+      })
+    });
+    await api(`/rest/v1/evidence_reconciliations?id=eq.${encodeURIComponent(id)}`,{
+      method:'PATCH',body:JSON.stringify({status:'approved',reviewed_by:session.user.id,reviewed_at:new Date().toISOString(),applied_changes:changes})
+    });
+    await refresh();
+  }catch(e){alert('Approve failed: '+e.message)}
+};
+window.cloudRejectReconciliation=async id=>{
+  if(!token())return alert('Sign in first.');
+  let reason=prompt('Reason for rejection (optional):')||null;
+  try{
+    await api(`/rest/v1/evidence_reconciliations?id=eq.${encodeURIComponent(id)}`,{
+      method:'PATCH',body:JSON.stringify({status:'rejected',reviewed_by:session.user.id,reviewed_at:new Date().toISOString(),review_notes:reason})
+    });
+    await refresh();
+  }catch(e){alert('Reject failed: '+e.message)}
+};
+
+async function refresh(){
+  if(!token()){setMsg('Sign in first.');return}
+  try{
+    setMsg('Syncing…');
+    let [drugs,doses,refs,files,vs,profiles,recs]=await Promise.all([
+      api('/rest/v1/drugs?select=*&order=generic_name.asc'),
+      api('/rest/v1/dose_records?select=*&order=created_at.asc'),
+      api('/rest/v1/references?select=*&order=created_at.desc'),
+      api('/rest/v1/reference_files?select=*&order=created_at.desc'),
+      api('/rest/v1/verifications?select=*&order=created_at.desc'),
+      api('/rest/v1/profiles?select=id,display_name,role&order=created_at.asc'),
+      api('/rest/v1/evidence_reconciliations?select=*&order=created_at.desc')
+    ]);
+    cloudDrugRows=drugs||[]; cloudDoseRows=doses||[]; cloudReferences=refs||[];
+    cloudEvidenceFiles=files||[]; cloudReconciliations=recs||[]; cloudProfiles=profiles||[];
+    window.setCloudLibrary?.(mapCloud((drugs||[]).filter(d=>d.active!==false),doses));
+    renderRefs(refs); renderFiles(files,refs); renderVerifications(vs,refs); renderUsers(profiles);
+    fillReconcileFileSelect(files,refs);
+    renderReconciliations(recs,refs,files);
+    let me=profiles.find(x=>x.id===session.user.id),role=me?.role||'viewer';
+    $c('cloudStatus').textContent='Connected • '+role;
+    $c('cloudUserText').textContent=`${session.user.email} • ${role}`;
+    setMsg(`Cloud ready: ${(drugs||[]).filter(d=>d.active!==false).length} active drugs • ${(refs||[]).length} references • ${(files||[]).length} files • ${(recs||[]).length} reconciliation items.`);
+  }catch(e){
+    setMsg('Sync failed: '+e.message);
+    if(String(e.message).includes('evidence_reconciliations'))setMsg('Cloud schema needs the v0.43 SQL migration before reconciliation can run.');
+  }
+}
+async function saveReference(){if(!token()){alert('Sign in first.');return}let title=$c('refTitle').value.trim();if(!title){alert('Reference title is required.');return}try{$c('refCloudResult').textContent='Saving…';let body={title,organization:$c('refOrg').value||null,edition:$c('refEdition').value||null,publication_date:$c('refDate').value||null,page_reference:$c('refPage').value||null,table_reference:$c('refTable').value||null,section_reference:$c('refSection').value||null,url:$c('refUrl').value||null,notes:$c('refNotes').value||null,source_type:$c('refType').value,created_by:session.user.id};let refs=await api('/rest/v1/references',{method:'POST',headers:{'Prefer':'return=representation'},body:JSON.stringify(body)}),ref=refs[0],file=$c('refFile').files?.[0];if(file){let safe=(file.name||'evidence').replace(/[^a-zA-Z0-9._-]/g,'_'),path=`${ref.id}/${crypto.randomUUID()}-${safe}`;let r=await fetch(`${SUPABASE_URL}/storage/v1/object/reference-files/${path}`,{method:'POST',headers:{'apikey':SUPABASE_KEY,'Authorization':`Bearer ${token()}`,'Content-Type':file.type||'application/octet-stream','x-upsert':'false'},body:file});if(!r.ok)throw new Error('Reference saved, but evidence upload failed: '+await r.text());await api('/rest/v1/reference_files',{method:'POST',body:JSON.stringify({reference_id:ref.id,storage_path:path,original_filename:file.name,mime_type:file.type||null,uploaded_by:session.user.id,file_size_bytes:file.size})})}if(selectedDoseId){await api('/rest/v1/verifications',{method:'POST',body:JSON.stringify({dose_record_id:selectedDoseId,reference_id:ref.id,verification_type:'source_verified',decision:'pending',notes:'Reference linked; clinical verification pending.'})})}$c('refCloudResult').textContent=selectedDoseId?'Saved and linked as PENDING evidence. Next: Reconciliation → Extract & Compare.':'Saved to cloud. Medication data has NOT been changed. Next: Reconciliation → Extract & Compare.';await refresh()}catch(e){$c('refCloudResult').textContent='Save failed: '+e.message}}
 async function createPending(){if(!selectedDoseId){alert('Open a cloud dose record in Drug Library and tap Verify first.');return}try{await api('/rest/v1/verifications',{method:'POST',body:JSON.stringify({dose_record_id:selectedDoseId,verification_type:'local_verified',decision:'pending',notes:'Pending clinician/institution review.'})});await refresh()}catch(e){alert('Could not create verification: '+e.message)}}
 window.cloudOpenEvidence=async(path,name)=>{if(!token())return alert('Sign in first.');try{let r=await fetch(`${SUPABASE_URL}/storage/v1/object/authenticated/reference-files/${path}`,{headers:{apikey:SUPABASE_KEY,Authorization:`Bearer ${token()}`}});if(!r.ok)throw new Error(await r.text());let b=await r.blob(),u=URL.createObjectURL(b);window.open(u,'_blank');setTimeout(()=>URL.revokeObjectURL(u),60000)}catch(e){alert('Open evidence failed: '+e.message)}};
 function openCloudTab(tab){document.querySelector('[data-tab="cloud"]')?.click();document.querySelectorAll('.cloudTabs button').forEach(b=>b.classList.toggle('active',b.dataset.cloudtab===tab));document.querySelectorAll('.cloudPane').forEach(p=>p.classList.toggle('active',p.id===`cloudPane-${tab}`))}
 window.cloudDoseAction=(action,doseId,drugName)=>{selectedDoseId=doseId||null;selectedDrugName=drugName||'';let msg=selectedDoseId?`${selectedDrugName} • dose record ${selectedDoseId}`:`${selectedDrugName}: this is not yet a Cloud dose record. Add/reference evidence can be stored, but dose-linked verification requires a Cloud dose record.`;$c('cloudDoseContext').textContent=msg;$c('verificationDoseContext').textContent=msg;if(action==='addref')openCloudTab('references');else if(action==='verify'||action==='history')openCloudTab('verifications');else openCloudTab('files');refresh()};
-document.querySelectorAll('.cloudTabs button').forEach(b=>b.onclick=()=>openCloudTab(b.dataset.cloudtab));$c('cloudSignIn').onclick=signIn;$c('cloudSignUp').onclick=signUp;$c('cloudSignOut').onclick=signOut;$c('cloudRefresh').onclick=refresh;$c('saveReferenceCloud').onclick=saveReference;$c('createPendingVerification').onclick=createPending;authUI();if(token())refresh();
+document.querySelectorAll('.cloudTabs button').forEach(b=>b.onclick=()=>openCloudTab(b.dataset.cloudtab));$c('cloudSignIn').onclick=signIn;$c('cloudSignUp').onclick=signUp;$c('cloudSignOut').onclick=signOut;$c('cloudRefresh').onclick=refresh;$c('saveReferenceCloud').onclick=saveReference;
+
+$c('analyzeEvidenceBtn').onclick=analyzeEvidence;
+$c('refreshReconciliation').onclick=refresh;
+$c('createPendingVerification').onclick=createPending;authUI();if(token())refresh();
 })();
+
+
+// v0.42 archive / restore
+window.cloudSetDrugActive=async function(id,active){
+  if(!window.supabaseClient) throw new Error("Supabase client not initialized");
+  const {data,error}=await window.supabaseClient.from("drugs")
+    .update({active:!!active,updated_at:new Date().toISOString()})
+    .eq("id",id).select("id,active").single();
+  if(error) throw error;
+  return data;
+};
