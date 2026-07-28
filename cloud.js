@@ -45,7 +45,7 @@ function proposedSummary(r){
     a.push(`Dose ${range}${p.dose_unit?' '+p.dose_unit:''}`);
   } else if(p.dose_default!=null) a.push(`Dose ${p.dose_default}${p.dose_unit?' '+p.dose_unit:''}`);
   if(p.dosing_weight)a.push(`Weight basis ${p.dosing_weight}`);
-  if(p.stock_concentration!=null)a.push(`Stock ${p.stock_concentration}${p.stock_unit?' '+p.stock_unit:''}`);
+  if(p.stock_concentration!=null)a.push(`Stock ${p.stock_concentration}${p.stock_unit?' '+p.stock_unit:''}`);if(Array.isArray(p.variants))a.push(`${p.variants.length} evidence variants — manual review required`);
   return a.join(' • ')||'No structured change extracted';
 }
 
@@ -97,9 +97,13 @@ async function extractPdfText(file){
       row.items.push({x,s});
     }
     rows.sort((a,b)=>b.y-a.y);
-    let lines=rows.map(r=>r.items.sort((a,b)=>a.x-b.x).map(x=>x.s).join('  ').replace(/\s+/g,' ').trim()).filter(Boolean);
-    let text=normalizeEvidenceText(lines.join('\n'));
-    pages.push({page:i,text,lines:text.split(/\n+/).filter(Boolean)});
+    let lineRows=rows.map(r=>{
+      let items=r.items.sort((a,b)=>a.x-b.x);
+      let text=items.map(x=>x.s).join('  ').replace(/\s+/g,' ').trim();
+      return {y:r.y,items,text};
+    }).filter(r=>r.text);
+    let text=normalizeEvidenceText(lineRows.map(r=>r.text).join('\n'));
+    pages.push({page:i,text,lines:text.split(/\n+/).filter(Boolean),lineRows});
   }
   return pages;
 }
@@ -335,79 +339,146 @@ async function prepareMatcherDrugs(){
   matcherLoadStatus.combinedCount=rows.length;
   return rows;
 }
+
+function cloudDrugForMatcherDrug(d){
+  if(isUuidValue(d?.id))return d;
+  let key=matcherKey(d);
+  return (cloudDrugRows||[]).find(x=>matcherKey(x)===key)||null;
+}
+async function ensureCloudDoseMap(){
+  if((cloudDrugRows||[]).length&&(cloudDoseRows||[]).length)return;
+  try{
+    let rows=await api('/rest/v1/dose_records?select=*,drugs(id,generic_name,display_name,active)&order=created_at.asc');
+    if(Array.isArray(rows)){
+      cloudDoseRows=rows.map(r=>{let x={...r};delete x.drugs;return x});
+      let map=new Map((cloudDrugRows||[]).map(d=>[d.id,d]));
+      for(let r of rows)if(r.drugs?.id)map.set(r.drugs.id,r.drugs);
+      cloudDrugRows=[...map.values()];
+    }
+  }catch(e){matcherLoadStatus.doseJoinError=e.message||String(e)}
+}
+function tableAnchors(page){
+  let a={induction:null,maintenance:null};
+  for(let row of page.lineRows||[])for(let it of row.items||[]){
+    let s=normalizedSearch(it.s);
+    if(a.induction==null&&/induction|bolus|นำสลบ/.test(s))a.induction=it.x;
+    if(a.maintenance==null&&/maintenance|infusion|ต่อเนื่อง|หยด/.test(s))a.maintenance=it.x;
+  }
+  return a;
+}
+function nearbyDrugRows(page,idx,allDrugLines){
+  let rows=page.lineRows||[],next=allDrugLines.filter(x=>x>idx).sort((a,b)=>a-b)[0];
+  return rows.slice(idx,Math.min(rows.length,next!=null?next:idx+4));
+}
+function contextBefore(page,idx){
+  for(let i=Math.max(0,idx-8);i<=idx;i++){
+    let s=normalizedSearch(page.lines?.[i]||'');
+    if(/induction|bolus|นำสลบ/.test(s))return 'Induction / Bolus';
+    if(/maintenance|infusion|ต่อเนื่อง|หยด/.test(s))return 'Maintenance / Infusion';
+    if(/emergency|crisis|resuscitation|ฉุกเฉิน/.test(s))return 'Emergency';
+  }
+  return '';
+}
+function candidatesInCell(text,ctx){
+  let out=[],doses=extractDoseCandidates(text),weights=detectWeightBases(text);
+  if(doses.length)for(let d of doses){
+    let w=weightNearest(text,d.idx),p={dose_min:d.dose_min,dose_default:d.dose_default,dose_max:d.dose_max,dose_unit:d.dose_unit};
+    if(w){p.dosing_weight=w.basis;p.dosing_weight_formula=w.formula}
+    out.push({proposed:p,ctx:ctx||inferEvidenceContext(text,d.idx),raw:d.raw,text});
+  }
+  else for(let w of weights)out.push({proposed:{dosing_weight:w.basis,dosing_weight_formula:w.formula},ctx:ctx||inferEvidenceContext(text,w.idx),raw:w.basis,text});
+  return out;
+}
+function parseDrugTableRow(page,hit,allDrugLines){
+  if(!Number.isInteger(hit.lineIndex))return [];
+  let rows=nearbyDrugRows(page,hit.lineIndex,allDrugLines),a=tableAnchors(page),out=[];
+  if(a.induction!=null&&a.maintenance!=null&&a.maintenance>a.induction){
+    let ind=[],maint=[];
+    for(let row of rows)for(let it of row.items||[]){
+      if(it.x>=a.maintenance-10)maint.push(it.s);
+      else if(it.x>=a.induction-10)ind.push(it.s);
+    }
+    for(let c of candidatesInCell(ind.join(' '),'Induction / Bolus'))out.push(c);
+    for(let c of candidatesInCell(maint.join(' '),'Maintenance / Infusion'))out.push(c);
+  }
+  if(!out.length){
+    let t=rows.map(r=>r.text).join(' | ');
+    out=candidatesInCell(t,contextBefore(page,hit.lineIndex));
+  }
+  return out;
+}
+function matchSpecificDose(drug,excerpt,ctx){
+  let cd=cloudDrugForMatcherDrug(drug);if(!cd)return null;
+  let rs=(cloudDoseRows||[]).filter(r=>r.drug_id===cd.id);if(!rs.length)return null;
+  let c=normalizedSearch(ctx),s=normalizedSearch(excerpt);
+  let scored=rs.map(r=>{
+    let score=0,txt=normalizedSearch((r.phase||'')+' '+(r.indication||''));
+    if(/induction|bolus/.test(c)&&/induction|bolus/.test(txt))score+=6;
+    if(/maintenance|infusion/.test(c)&&/maintenance|infusion/.test(txt))score+=6;
+    if(/emergency|crisis/.test(c)&&/emergency|crisis/.test(txt))score+=6;
+    for(let w of txt.split(' ').filter(x=>x.length>3))if(s.includes(w))score++;
+    return {r,score};
+  }).sort((x,y)=>y.score-x.score);
+  return scored[0]?.score>0?scored[0].r:(rs.length===1?rs[0]:null);
+}
+function shortExcerpt(name,ctx,text,raw){
+  let s=normalizeEvidenceText(text),pos=s.toLowerCase().indexOf(String(raw||name||'').toLowerCase());
+  if(pos<0)pos=0;
+  return s.slice(Math.max(0,pos-80),Math.min(s.length,pos+420));
+}
+function mergeClinicalFindings(rows){
+  let map=new Map();
+  for(let f of rows){
+    let k=`${matcherKey(f.drug)}|${normalizedSearch(f.evidenceContext||'unspecified')}|${f.page}`;
+    if(!map.has(k))map.set(k,{...f,variants:[]});
+    let g=map.get(k),sig=JSON.stringify(f.proposed);
+    if(!g.variants.some(v=>JSON.stringify(v)===sig))g.variants.push(f.proposed);
+    if(!g.dose&&f.dose)g.dose=f.dose;
+  }
+  return [...map.values()].map(g=>{
+    if(g.variants.length===1)g.proposed=g.variants[0];
+    else{g.proposed={evidence_context:g.evidenceContext,variants:g.variants};g.multiVariant=true}
+    return g;
+  });
+}
+
 function analyzePages(pages,matcherDrugs){
-  let findings=[],drugs=(matcherDrugs||[]),foundNames=new Set(),matchedTerms=new Set();
+  let findings=[],foundNames=new Set(),matchedTerms=new Set(),drugs=matcherDrugs||[];
   let charCount=pages.reduce((n,p)=>n+(p.text||'').length,0);
-
   for(let pg of pages){
+    let hits=[];
     for(let d of drugs){
-      let match=findDrugMentions(pg,d);
-      if(!match.hits.length)continue;
-      foundNames.add(d.generic_name||d.display_name||'Unnamed drug');
-      match.matchedTerms.forEach(x=>matchedTerms.add(x));
-
-      for(let hit of match.hits){
-        let excerpt=contextForDrugHit(pg,hit,3,9);
-        let doses=extractDoseCandidates(excerpt),weights=detectWeightBases(excerpt);
-        if(!doses.length && !weights.length)continue;
-
-        if(doses.length){
-          for(let dose of doses){
-            let weight=weightNearest(excerpt,dose.idx);
-            let ctx=inferEvidenceContext(excerpt,dose.idx);
-            let matched=inferDoseRecord(d.id,excerpt,ctx);
-            let proposed={
-              dose_min:dose.dose_min,
-              dose_default:dose.dose_default,
-              dose_max:dose.dose_max,
-              dose_unit:dose.dose_unit
-            };
-            if(weight){
-              proposed.dosing_weight=weight.basis;
-              proposed.dosing_weight_formula=weight.formula;
-            }
-            findings.push({
-              drug:d,dose:matched,page:pg.page,
-              excerpt:excerpt.slice(0,1400),
-              proposed,evidenceContext:ctx,
-              matchedTerm:hit.term,matchMode:hit.mode
-            });
-          }
-        }else{
-          for(let weight of weights){
-            let ctx=inferEvidenceContext(excerpt,weight.idx);
-            let matched=inferDoseRecord(d.id,excerpt,ctx);
-            findings.push({
-              drug:d,dose:matched,page:pg.page,
-              excerpt:excerpt.slice(0,1400),
-              proposed:{dosing_weight:weight.basis,dosing_weight_formula:weight.formula},
-              evidenceContext:ctx,matchedTerm:hit.term,matchMode:hit.mode
-            });
-          }
-        }
+      let m=findDrugMentions(pg,d);
+      for(let h of m.hits)hits.push({drug:d,hit:h});
+    }
+    let drugLines=[...new Set(hits.map(x=>x.hit.lineIndex).filter(Number.isInteger))].sort((a,b)=>a-b);
+    for(let x of hits){
+      foundNames.add(x.drug.generic_name||x.drug.display_name);
+      matchedTerms.add(x.hit.term);
+      let cs=parseDrugTableRow(pg,x.hit,drugLines);
+      if(!cs.length){
+        let t=contextForDrugHit(pg,x.hit,1,3);
+        cs=candidatesInCell(t,contextBefore(pg,x.hit.lineIndex||0));
+      }
+      for(let c of cs){
+        let dose=matchSpecificDose(x.drug,c.text,c.ctx);
+        findings.push({
+          drug:x.drug,dose,page:pg.page,evidenceContext:c.ctx,
+          proposed:c.proposed,
+          excerpt:shortExcerpt(x.drug.generic_name||x.drug.display_name,c.ctx,c.text,c.raw),
+          matchedTerm:x.hit.term,matchMode:x.hit.mode
+        });
       }
     }
   }
-
-  let seen=new Set();
-  findings=findings.filter(f=>{
-    let k=`${f.drug.id}|${f.dose?.id||''}|${f.page}|${JSON.stringify(f.proposed)}`;
-    if(seen.has(k))return false;
-    seen.add(k);return true;
-  }).slice(0,120);
-
-  let preview=(pages.map(p=>p.text||'').join('\n').replace(/\s+/g,' ').trim()).slice(0,700);
+  findings=mergeClinicalFindings(findings).slice(0,120);
   return {
-    findings,
-    charCount,
-    foundDrugNames:[...foundNames].sort(),
-    matchedTerms:[...matchedTerms].sort(),
-    cloudDrugCount:matcherLoadStatus.cloudCount,
-    appDrugCount:matcherLoadStatus.appCount,
-    combinedDrugCount:drugs.length,
-    cloudQueryStatus:matcherLoadStatus.cloudQuery,
-    cloudQueryError:matcherLoadStatus.cloudError,
-    textPreview:preview
+    findings,charCount,foundDrugNames:[...foundNames].filter(Boolean).sort(),
+    matchedTerms:[...matchedTerms].sort(),cloudDrugCount:matcherLoadStatus.cloudCount,
+    appDrugCount:matcherLoadStatus.appCount,combinedDrugCount:drugs.length,
+    cloudQueryStatus:matcherLoadStatus.cloudQuery,cloudQueryError:matcherLoadStatus.cloudError,
+    doseJoinError:matcherLoadStatus.doseJoinError,
+    textPreview:pages.map(p=>p.text||'').join(' ').replace(/\s+/g,' ').slice(0,700)
   };
 }
 function showExtractionDiagnostic(stats){
@@ -421,7 +492,7 @@ function showExtractionDiagnostic(stats){
      <div><b>Text extraction / matcher</b></div>
      <div>Extracted text: <b>${Number(stats.charCount||0).toLocaleString()} characters</b></div>
      <div>Cloud medication query: <b>${esc(stats.cloudQueryStatus||'unknown')}</b></div>
-     ${stats.cloudQueryError?`<div class="diagError">Cloud query error: <b>${esc(stats.cloudQueryError)}</b></div>`:''}
+     ${stats.cloudQueryError?`<div class="diagError">Cloud query error: <b>${esc(stats.cloudQueryError)}</b></div>`:''}${stats.doseJoinError?`<div class="diagError">Dose-record join error: <b>${esc(stats.doseJoinError)}</b></div>`:''}
      <div>Cloud drugs available: <b>${Number(stats.cloudDrugCount||0).toLocaleString()}</b></div>
      <div>Built-in/local fallback drugs: <b>${Number(stats.appDrugCount||0).toLocaleString()}</b></div>
      <div>Total unique matcher drugs: <b>${Number(stats.combinedDrugCount||0).toLocaleString()}</b></div>
@@ -438,10 +509,10 @@ async function createReconciliationRows(fileRow,findings){
     drug_id:isUuidValue(f.drug.id)?f.drug.id:null,
     dose_record_id:f.dose?.id||null,
     matched_drug_name:f.drug.generic_name||f.drug.display_name||null,
-    status:f.dose?'review_required':'extracted',
+    status:(f.dose&&!f.multiVariant)?'review_required':'extracted',
     evidence_excerpt:f.excerpt,
     page_reference:String(f.page),
-    proposed_changes:{...f.proposed,evidence_context:f.evidenceContext||undefined},
+    proposed_changes:{...f.proposed,evidence_context:f.evidenceContext||undefined,confidence:f.dose&&!f.multiVariant?'high':'manual_review'},
     extracted_by:session.user.id
   }));
   if(!rows.length)return [];
@@ -467,6 +538,7 @@ async function analyzeEvidence(){
       let text=await blob.text();
       pages=[{page:1,text}];
     }
+    await ensureCloudDoseMap();
     let matcherDrugs=await prepareMatcherDrugs();
     let analysis=analyzePages(pages,matcherDrugs);
     showExtractionDiagnostic(analysis);
