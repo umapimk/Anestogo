@@ -380,6 +380,27 @@ function classifiedDrug(d){
 
 function saveLocalDrugs(){localStorage.setItem("anesthLocalDrugs",JSON.stringify(localDrugs))}
 function allDrugs(){return [...D,...localDrugs,...cloudDrugs].map(classifiedDrug)}
+window.getEvidenceMatcherDrugs=()=>{
+ const seen=new Map();
+ for(const d of allDrugs()){
+   const name=String(d.name||d.generic_name||d.display_name||'').trim();
+   if(!name)continue;
+   const key=name.toLowerCase().replace(/[^a-z0-9ก-๙]+/g,'');
+   const cloudId=d.cloudId||(/^cloud-/.test(String(d.id||''))?String(d.id).slice(6):null);
+   const row={
+     id:cloudId||null,
+     app_id:d.id||null,
+     generic_name:name,
+     display_name:name,
+     source:cloudId?'cloud':(isLocalDrug(d.id)?'local':'built_in'),
+     phase:d.phase||null,
+     indication:d.context||null,
+     route:d.route||null
+   };
+   if(!seen.has(key) || row.source==='cloud')seen.set(key,row);
+ }
+ return [...seen.values()];
+};
 window.setCloudLibrary=(arr)=>{cloudDrugs=Array.isArray(arr)?arr:[]; try{renderCatFilters();render();renderLibraryCompact();}catch(e){console.warn(e)}};
 function findDrug(id){return allDrugs().find(d=>d.id===id)}
 function isLocalDrug(id){return localDrugs.some(d=>d.id===id)}

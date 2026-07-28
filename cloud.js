@@ -7,6 +7,7 @@ const $c=id=>document.getElementById(id); let session=JSON.parse(localStorage.ge
 const token=()=>session?.access_token||null;
 
 let cloudDrugRows=[], cloudDoseRows=[], cloudReferences=[], cloudEvidenceFiles=[], cloudReconciliations=[], cloudProfiles=[];
+let matcherLoadStatus={cloudQuery:'not attempted',cloudError:null,cloudCount:0,appCount:0,combinedCount:0};
 
 function headers(extra={}){return {'apikey':SUPABASE_KEY,'Authorization':`Bearer ${token()||SUPABASE_KEY}`,'Content-Type':'application/json',...extra}}
 async function api(path,opt={}){let r=await fetch(SUPABASE_URL+path,{...opt,headers:headers(opt.headers||{})});let text=await r.text(),data;try{data=text?JSON.parse(text):null}catch{data=text}if(!r.ok)throw new Error(data?.message||data?.msg||data?.error_description||data?.error||`${r.status} ${r.statusText}`);return data}
@@ -308,8 +309,34 @@ function inferDoseRecord(drugId,excerpt,evidenceContext=''){
   }).sort((a,b)=>b.score-a.score);
   return scores[0]?.score>0?scores[0].r:null;
 }
-function analyzePages(pages){
-  let findings=[],drugs=(cloudDrugRows||[]),foundNames=new Set(),matchedTerms=new Set();
+function isUuidValue(v){return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(v||''))}
+function matcherKey(d){return compactEvidenceSearch(d?.generic_name||d?.display_name||'')}
+async function prepareMatcherDrugs(){
+  let cloudRows=Array.isArray(cloudDrugRows)?cloudDrugRows.filter(d=>d&&d.active!==false):[];
+  matcherLoadStatus={cloudQuery:cloudRows.length?'loaded during refresh':'retrying',cloudError:null,cloudCount:cloudRows.length,appCount:0,combinedCount:0};
+  if(!cloudRows.length && token()){
+    try{
+      cloudRows=await api('/rest/v1/drugs?select=id,generic_name,display_name,active&active=eq.true&order=generic_name.asc');
+      cloudDrugRows=cloudRows||[];
+      matcherLoadStatus.cloudQuery='direct query OK';
+      matcherLoadStatus.cloudCount=cloudRows.length;
+    }catch(e){
+      matcherLoadStatus.cloudQuery='direct query failed';
+      matcherLoadStatus.cloudError=e.message||String(e);
+    }
+  }
+  let appRows=[];
+  try{appRows=window.getEvidenceMatcherDrugs?.()||[]}catch(e){matcherLoadStatus.appError=e.message||String(e)}
+  matcherLoadStatus.appCount=appRows.length;
+  const merged=new Map();
+  for(const d of appRows){const k=matcherKey(d);if(k)merged.set(k,d)}
+  for(const d of cloudRows){const k=matcherKey(d);if(k)merged.set(k,{...d,source:'cloud'})}
+  const rows=[...merged.values()];
+  matcherLoadStatus.combinedCount=rows.length;
+  return rows;
+}
+function analyzePages(pages,matcherDrugs){
+  let findings=[],drugs=(matcherDrugs||[]),foundNames=new Set(),matchedTerms=new Set();
   let charCount=pages.reduce((n,p)=>n+(p.text||'').length,0);
 
   for(let pg of pages){
@@ -375,7 +402,11 @@ function analyzePages(pages){
     charCount,
     foundDrugNames:[...foundNames].sort(),
     matchedTerms:[...matchedTerms].sort(),
-    cloudDrugCount:drugs.length,
+    cloudDrugCount:matcherLoadStatus.cloudCount,
+    appDrugCount:matcherLoadStatus.appCount,
+    combinedDrugCount:drugs.length,
+    cloudQueryStatus:matcherLoadStatus.cloudQuery,
+    cloudQueryError:matcherLoadStatus.cloudError,
     textPreview:preview
   };
 }
@@ -389,7 +420,11 @@ function showExtractionDiagnostic(stats){
     `<div class="extractDiagDivider"></div>
      <div><b>Text extraction / matcher</b></div>
      <div>Extracted text: <b>${Number(stats.charCount||0).toLocaleString()} characters</b></div>
-     <div>Cloud drugs available for matching: <b>${Number(stats.cloudDrugCount||0).toLocaleString()}</b></div>
+     <div>Cloud medication query: <b>${esc(stats.cloudQueryStatus||'unknown')}</b></div>
+     ${stats.cloudQueryError?`<div class="diagError">Cloud query error: <b>${esc(stats.cloudQueryError)}</b></div>`:''}
+     <div>Cloud drugs available: <b>${Number(stats.cloudDrugCount||0).toLocaleString()}</b></div>
+     <div>Built-in/local fallback drugs: <b>${Number(stats.appDrugCount||0).toLocaleString()}</b></div>
+     <div>Total unique matcher drugs: <b>${Number(stats.combinedDrugCount||0).toLocaleString()}</b></div>
      <div>Drug names found: <b>${esc(names)}</b></div>
      <div>Matched terms: <b>${esc(terms)}</b></div>
      <div>Structured candidates: <b>${stats.findings?.length||0}</b></div>
@@ -400,9 +435,9 @@ async function createReconciliationRows(fileRow,findings){
   let rows=findings.map(f=>({
     reference_id:fileRow.reference_id,
     reference_file_id:fileRow.id,
-    drug_id:f.drug.id,
+    drug_id:isUuidValue(f.drug.id)?f.drug.id:null,
     dose_record_id:f.dose?.id||null,
-    matched_drug_name:f.drug.generic_name,
+    matched_drug_name:f.drug.generic_name||f.drug.display_name||null,
     status:f.dose?'review_required':'extracted',
     evidence_excerpt:f.excerpt,
     page_reference:String(f.page),
@@ -432,12 +467,14 @@ async function analyzeEvidence(){
       let text=await blob.text();
       pages=[{page:1,text}];
     }
-    let analysis=analyzePages(pages);
+    let matcherDrugs=await prepareMatcherDrugs();
+    let analysis=analyzePages(pages,matcherDrugs);
     showExtractionDiagnostic(analysis);
     let findings=analysis.findings;
     if(!findings.length){
       let found=analysis.foundDrugNames.length?` Drug names detected: ${analysis.foundDrugNames.join(', ')}.`:'';
-      $c('reconcileAnalyzeResult').textContent=`Text extraction completed (${analysis.charCount.toLocaleString()} characters), but no structured drug/dose/weight-basis candidate was found.${found} Evidence remains stored; review manually.`;
+      let sourceNote=analysis.combinedDrugCount?'' :' No medication-name source was available for matching.';
+      $c('reconcileAnalyzeResult').textContent=`Text extraction completed (${analysis.charCount.toLocaleString()} characters), but no structured drug/dose/weight-basis candidate was found.${found}${sourceNote} Evidence remains stored; review manually.`;
       return;
     }
     let created=await createReconciliationRows(fileRow,findings);

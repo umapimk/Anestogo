@@ -714,3 +714,5 @@ html[data-dark="1"] .archiveDrugBtn,html[data-dark="1"] .restoreDrugBtn{backgrou
   font-size:10px;
   line-height:1.45;
 }
+\n/* v0.49 matcher source fallback */
+.diagError{color:#9a3744;background:#fff0f1;padding:6px 8px;border-radius:8px;margin:4px 0}
