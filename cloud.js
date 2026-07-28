@@ -18,7 +18,7 @@ async function signUp(){try{let email=$c('cloudEmail').value.trim(),password=$c(
 function signOut(){session=null;localStorage.removeItem(SESSION_KEY);window.setCloudLibrary?.([]);authUI();setMsg('Signed out. Built-in and local libraries remain available.')}
 function mapCloud(drugs,doses){let by={};for(let x of doses||[])(by[x.drug_id]??=[]).push(x);return (drugs||[]).map(d=>{let rs=by[d.id]||[],r=rs[0]||{};return {id:'cloud-'+d.id,cloudId:d.id,active:d.active!==false,cloudActive:d.active!==false,name:d.generic_name,displayName:d.display_name,category:d.primary_category||'Other',categories:[d.primary_category||'Other'],drugClass:d.drug_class||'',phase:r.phase||'Other',phases:[...new Set(rs.map(x=>x.phase).filter(Boolean))],context:r.indication||'',min:r.dose_min,max:r.dose_max,def:r.dose_default,unit:r.dose_unit,stock:r.stock_concentration,stockUnit:r.stock_unit,ref:'Cloud Library • '+(r.status||'dose_locked'),doseLocked:r.status==='dose_locked',checked:['source_verified','local_verified'].includes(r.status),verification:(r.status||'').toUpperCase(),cloudDoseId:r.id,dosingRecords:rs.map(x=>({cloudDoseId:x.id,phase:x.phase||'Other',context:x.indication||'',min:x.dose_min,max:x.dose_max,def:x.dose_default,unit:x.dose_unit,stock:x.stock_concentration,stockUnit:x.stock_unit,ref:'Cloud • '+x.status,route:x.route,population:x.population,dosingWeight:x.dosing_weight||'TBW',dosingWeightFormula:x.dosing_weight_formula||null}))}})}
 function renderRefs(refs){$c('cloudReferencesList').innerHTML=refs.length?refs.map(r=>`<div class="cloudRow"><b>${esc(r.title)}</b><span>${esc(r.organization||'')} ${esc(r.edition||'')}</span><small>${esc(r.publication_date||'')} ${esc(r.page_reference?'• p. '+r.page_reference:'')}</small></div>`).join(''):'No references yet.'}
-function renderFiles(files,refs){let names=Object.fromEntries(refs.map(r=>[r.id,r.title]));$c('cloudFilesList').innerHTML=files.length?files.map(f=>`<div class="cloudRow"><b>${esc(f.original_filename||'Evidence file')}</b><span>${esc(names[f.reference_id]||'Reference')}</span><small>${esc(f.mime_type||'')} ${f.file_size_bytes?`• ${Math.round(f.file_size_bytes/1024)} KB`:''}</small><button type="button" onclick="cloudOpenEvidence('${f.storage_path.replace(/'/g,"\\'")}','${(f.original_filename||'evidence').replace(/'/g,"\\'")}')">Open evidence</button></div>`).join(''):'No evidence files yet.'}
+function renderFiles(files,refs){let names=Object.fromEntries(refs.map(r=>[r.id,r.title]));$c('cloudFilesList').innerHTML=files.length?files.map(f=>`<div class="cloudRow"><b>${esc(f.original_filename||'Evidence file')}</b><span>${esc(names[f.reference_id]||'Reference')}</span><small>${esc(f.mime_type||'')} ${f.file_size_bytes?`• ${Math.round(f.file_size_bytes/1024)} KB`:''}</small><div class="evidenceFileActions"><button type="button" onclick="cloudOpenEvidenceById('${f.id}')">Open evidence</button><button type="button" class="dangerBtn" onclick="cloudDeleteEvidence('${f.id}')">🗑 Delete evidence</button></div></div>`).join(''):'No evidence files yet.'}
 function renderVerifications(vs,refs){let names=Object.fromEntries(refs.map(r=>[r.id,r.title]));let arr=selectedDoseId?vs.filter(v=>v.dose_record_id===selectedDoseId):vs;$c('cloudVerificationsList').innerHTML=arr.length?arr.map(v=>`<div class="cloudRow"><b>${esc(v.verification_type)} • ${esc(v.decision)}</b><span>${esc(names[v.reference_id]||'No reference linked')}</span><small>${esc(v.verified_at||v.created_at||'')} ${v.notes?'• '+esc(v.notes):''}</small></div>`).join(''):(selectedDoseId?'No verification history for this dose.':'No verifications yet.')}
 function renderUsers(ps){$c('cloudUsersList').innerHTML=ps.length?ps.map(p=>`<div class="cloudRow"><b>${esc(p.display_name||p.id)}</b><span class="roleBadge">${esc(p.role)}</span></div>`).join(''):'No profiles visible. Admin can enable shared profile visibility with the v0.39 SQL policy.'}
 
@@ -101,11 +101,31 @@ async function extractXlsxText(file){
   return pages;
 }
 async function fetchEvidenceFile(fileRow){
-  let r=await fetch(`${SUPABASE_URL}/storage/v1/object/authenticated/reference-files/${fileRow.storage_path}`,{
-    headers:{apikey:SUPABASE_KEY,Authorization:`Bearer ${token()}`}
+  const path=String(fileRow.storage_path||'').split('/').map(encodeURIComponent).join('/');
+  let r=await fetch(`${SUPABASE_URL}/storage/v1/object/authenticated/reference-files/${path}`,{
+    method:'GET',headers:{apikey:SUPABASE_KEY,Authorization:`Bearer ${token()}`,Accept:'application/octet-stream'},cache:'no-store'
   });
-  if(!r.ok)throw new Error(await r.text());
-  return await r.blob();
+  if(!r.ok)throw new Error(`Storage download failed (${r.status}): ${await r.text()}`);
+  let blob=await r.blob();
+  if(!blob.size)throw new Error('Downloaded file is 0 bytes even though Cloud metadata reports a file. Check the Storage object/path.');
+  return blob;
+}
+async function sha256Hex(blob){
+  let buf=await blob.arrayBuffer(),hash=await crypto.subtle.digest('SHA-256',buf);
+  return [...new Uint8Array(hash)].map(x=>x.toString(16).padStart(2,'0')).join('');
+}
+async function inspectEvidenceBlob(fileRow,blob){
+  let meta=Number(fileRow.file_size_bytes||0),downloaded=blob.size||0;
+  let first=new Uint8Array(await blob.slice(0,5).arrayBuffer());
+  let header=String.fromCharCode(...first),isPdf=(fileRow.mime_type==='application/pdf'||/\.pdf$/i.test(fileRow.original_filename||''));
+  let pdfValid=!isPdf||header==='%PDF-';
+  return {meta,downloaded,isPdf,pdfValid,ready:downloaded>0&&pdfValid,header};
+}
+function showEvidenceDiagnostic(d){
+  let el=$c('reconcileDiagnostic'); if(!el)return;
+  let kb=n=>n?`${(n/1024).toFixed(n<10240?1:0)} KB`:'0 B';
+  el.innerHTML=`<div><b>Evidence diagnostic</b></div><div>Stored metadata: <b>${kb(d.meta)}</b></div><div>Downloaded file: <b>${kb(d.downloaded)}</b> ${d.downloaded?'✓':'✕'}</div>${d.isPdf?`<div>PDF header: <b>${d.pdfValid?'valid ✓':'invalid ✕'}</b></div>`:''}<div>Ready for extraction: <b>${d.ready?'YES ✓':'NO ✕'}</b></div>`;
+  el.hidden=false;
 }
 function cleanDrugName(s){return (s||'').toLowerCase().replace(/[^a-z0-9]+/g,' ').trim()}
 function nearbyText(text,start,len=1600){
@@ -203,6 +223,8 @@ async function analyzeEvidence(){
   try{
     $c('reconcileAnalyzeResult').textContent='Downloading and extracting evidence…';
     let blob=await fetchEvidenceFile(fileRow);
+    let diagnostic=await inspectEvidenceBlob(fileRow,blob); showEvidenceDiagnostic(diagnostic);
+    if(!diagnostic.ready)throw new Error(diagnostic.isPdf?'Downloaded object is not a valid PDF.':'Downloaded evidence is not ready for extraction.');
     let filename=(fileRow.original_filename||'').toLowerCase(),pages;
     if(filename.endsWith('.pdf')||fileRow.mime_type==='application/pdf')pages=await extractPdfText(blob);
     else if(/\.(xlsx|xls|csv)$/.test(filename))pages=await extractXlsxText(blob);
@@ -312,12 +334,53 @@ async function refresh(){
     setMsg(`Cloud ready: ${(drugs||[]).filter(d=>d.active!==false).length} active drugs • ${(refs||[]).length} references • ${(files||[]).length} files • ${(recs||[]).length} reconciliation items.`);
   }catch(e){
     setMsg('Sync failed: '+e.message);
-    if(String(e.message).includes('evidence_reconciliations'))setMsg('Cloud schema needs the v0.43 SQL migration before reconciliation can run.');
+    if(String(e.message).includes('evidence_reconciliations'))setMsg('Cloud schema needs the v0.43/v0.44 reconciliation SQL migration before reconciliation can run.');
   }
 }
-async function saveReference(){if(!token()){alert('Sign in first.');return}let title=$c('refTitle').value.trim();if(!title){alert('Reference title is required.');return}try{$c('refCloudResult').textContent='Saving…';let body={title,organization:$c('refOrg').value||null,edition:$c('refEdition').value||null,publication_date:$c('refDate').value||null,page_reference:$c('refPage').value||null,table_reference:$c('refTable').value||null,section_reference:$c('refSection').value||null,url:$c('refUrl').value||null,notes:$c('refNotes').value||null,source_type:$c('refType').value,created_by:session.user.id};let refs=await api('/rest/v1/references',{method:'POST',headers:{'Prefer':'return=representation'},body:JSON.stringify(body)}),ref=refs[0],file=$c('refFile').files?.[0];if(file){let safe=(file.name||'evidence').replace(/[^a-zA-Z0-9._-]/g,'_'),path=`${ref.id}/${crypto.randomUUID()}-${safe}`;let r=await fetch(`${SUPABASE_URL}/storage/v1/object/reference-files/${path}`,{method:'POST',headers:{'apikey':SUPABASE_KEY,'Authorization':`Bearer ${token()}`,'Content-Type':file.type||'application/octet-stream','x-upsert':'false'},body:file});if(!r.ok)throw new Error('Reference saved, but evidence upload failed: '+await r.text());await api('/rest/v1/reference_files',{method:'POST',body:JSON.stringify({reference_id:ref.id,storage_path:path,original_filename:file.name,mime_type:file.type||null,uploaded_by:session.user.id,file_size_bytes:file.size})})}if(selectedDoseId){await api('/rest/v1/verifications',{method:'POST',body:JSON.stringify({dose_record_id:selectedDoseId,reference_id:ref.id,verification_type:'source_verified',decision:'pending',notes:'Reference linked; clinical verification pending.'})})}$c('refCloudResult').textContent=selectedDoseId?'Saved and linked as PENDING evidence. Next: Reconciliation → Extract & Compare.':'Saved to cloud. Medication data has NOT been changed. Next: Reconciliation → Extract & Compare.';await refresh()}catch(e){$c('refCloudResult').textContent='Save failed: '+e.message}}
+async function saveReference(){
+  if(!token()){alert('Sign in first.');return}
+  let title=$c('refTitle').value.trim(); if(!title){alert('Reference title is required.');return}
+  let file=$c('refFile').files?.[0], fileHash=null;
+  try{
+    $c('refCloudResult').textContent='Validating…';
+    if(file){
+      if(!file.size)throw new Error('Selected evidence file is 0 bytes. Choose the original file again.');
+      fileHash=await sha256Hex(file);
+      let dup=await api(`/rest/v1/reference_files?select=id,original_filename,file_size_bytes,reference_id&file_hash=eq.${encodeURIComponent(fileHash)}&limit=1`);
+      if(dup?.length)throw new Error(`This exact evidence file is already stored (${dup[0].original_filename||'evidence'}). Duplicate upload was blocked.`);
+    }
+    $c('refCloudResult').textContent='Saving…';
+    let body={title,organization:$c('refOrg').value||null,edition:$c('refEdition').value||null,publication_date:$c('refDate').value||null,page_reference:$c('refPage').value||null,table_reference:$c('refTable').value||null,section_reference:$c('refSection').value||null,url:$c('refUrl').value||null,notes:$c('refNotes').value||null,source_type:$c('refType').value,created_by:session.user.id};
+    let refs=await api('/rest/v1/references',{method:'POST',headers:{'Prefer':'return=representation'},body:JSON.stringify(body)}),ref=refs[0];
+    if(file){
+      let safe=(file.name||'evidence').replace(/[^a-zA-Z0-9._-]/g,'_'),path=`${ref.id}/${crypto.randomUUID()}-${safe}`;
+      let r=await fetch(`${SUPABASE_URL}/storage/v1/object/reference-files/${path}`,{method:'POST',headers:{'apikey':SUPABASE_KEY,'Authorization':`Bearer ${token()}`,'Content-Type':file.type||'application/octet-stream','x-upsert':'false'},body:file});
+      if(!r.ok)throw new Error('Reference saved, but evidence upload failed: '+await r.text());
+      // Verify the object can really be downloaded before creating metadata.
+      let verifyRow={storage_path:path,file_size_bytes:file.size,mime_type:file.type||null,original_filename:file.name};
+      let downloaded=await fetchEvidenceFile(verifyRow);
+      if(downloaded.size!==file.size)throw new Error(`Upload verification failed: selected ${file.size} bytes, downloaded ${downloaded.size} bytes.`);
+      await api('/rest/v1/reference_files',{method:'POST',body:JSON.stringify({reference_id:ref.id,storage_path:path,original_filename:file.name,mime_type:file.type||null,uploaded_by:session.user.id,file_size_bytes:file.size,file_hash:fileHash})});
+    }
+    if(selectedDoseId)await api('/rest/v1/verifications',{method:'POST',body:JSON.stringify({dose_record_id:selectedDoseId,reference_id:ref.id,verification_type:'source_verified',decision:'pending',notes:'Reference linked; clinical verification pending.'})});
+    $c('refCloudResult').textContent=selectedDoseId?'Saved, upload verified, and linked as PENDING evidence. Next: Reconciliation → Extract & Compare.':'Saved to cloud and upload verified. Medication data has NOT been changed. Next: Reconciliation → Extract & Compare.';
+    await refresh();
+  }catch(e){$c('refCloudResult').textContent='Save failed: '+e.message}
+}
 async function createPending(){if(!selectedDoseId){alert('Open a cloud dose record in Drug Library and tap Verify first.');return}try{await api('/rest/v1/verifications',{method:'POST',body:JSON.stringify({dose_record_id:selectedDoseId,verification_type:'local_verified',decision:'pending',notes:'Pending clinician/institution review.'})});await refresh()}catch(e){alert('Could not create verification: '+e.message)}}
-window.cloudOpenEvidence=async(path,name)=>{if(!token())return alert('Sign in first.');try{let r=await fetch(`${SUPABASE_URL}/storage/v1/object/authenticated/reference-files/${path}`,{headers:{apikey:SUPABASE_KEY,Authorization:`Bearer ${token()}`}});if(!r.ok)throw new Error(await r.text());let b=await r.blob(),u=URL.createObjectURL(b);window.open(u,'_blank');setTimeout(()=>URL.revokeObjectURL(u),60000)}catch(e){alert('Open evidence failed: '+e.message)}};
+window.cloudOpenEvidence=async(path,name)=>{if(!token())return alert('Sign in first.');try{let b=await fetchEvidenceFile({storage_path:path,original_filename:name});let u=URL.createObjectURL(b);window.open(u,'_blank');setTimeout(()=>URL.revokeObjectURL(u),60000)}catch(e){alert('Open evidence failed: '+e.message)}};
+window.cloudDeleteEvidence=async id=>{
+  if(!token())return alert('Sign in first.');
+  let f=(cloudEvidenceFiles||[]).find(x=>x.id===id); if(!f)return alert('Evidence file not found.');
+  if(!confirm(`Delete evidence file?\n\n${f.original_filename||'Evidence file'}\n\nThis removes the stored file and its file record. The Reference itself is kept.`))return;
+  try{
+    let path=String(f.storage_path||'').split('/').map(encodeURIComponent).join('/');
+    let r=await fetch(`${SUPABASE_URL}/storage/v1/object/reference-files/${path}`,{method:'DELETE',headers:{apikey:SUPABASE_KEY,Authorization:`Bearer ${token()}`}});
+    if(!r.ok&&r.status!==404)throw new Error('Storage delete failed: '+await r.text());
+    await api(`/rest/v1/reference_files?id=eq.${encodeURIComponent(id)}`,{method:'DELETE'});
+    await refresh();
+  }catch(e){alert('Delete evidence failed: '+e.message)}
+};
 function openCloudTab(tab){document.querySelector('[data-tab="cloud"]')?.click();document.querySelectorAll('.cloudTabs button').forEach(b=>b.classList.toggle('active',b.dataset.cloudtab===tab));document.querySelectorAll('.cloudPane').forEach(p=>p.classList.toggle('active',p.id===`cloudPane-${tab}`))}
 window.cloudDoseAction=(action,doseId,drugName)=>{selectedDoseId=doseId||null;selectedDrugName=drugName||'';let msg=selectedDoseId?`${selectedDrugName} • dose record ${selectedDoseId}`:`${selectedDrugName}: this is not yet a Cloud dose record. Add/reference evidence can be stored, but dose-linked verification requires a Cloud dose record.`;$c('cloudDoseContext').textContent=msg;$c('verificationDoseContext').textContent=msg;if(action==='addref')openCloudTab('references');else if(action==='verify'||action==='history')openCloudTab('verifications');else openCloudTab('files');refresh()};
 document.querySelectorAll('.cloudTabs button').forEach(b=>b.onclick=()=>openCloudTab(b.dataset.cloudtab));$c('cloudSignIn').onclick=signIn;$c('cloudSignUp').onclick=signUp;$c('cloudSignOut').onclick=signOut;$c('cloudRefresh').onclick=refresh;$c('saveReferenceCloud').onclick=saveReference;

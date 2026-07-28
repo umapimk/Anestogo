@@ -680,3 +680,9 @@ html[data-dark="1"] .archiveDrugBtn,html[data-dark="1"] .restoreDrugBtn{backgrou
 .reconcileActions .rejectBtn{background:#fff0f1!important;border-color:#e8b7bd!important;color:#9a3744!important;font-weight:900}
 #reconcileAnalyzeResult{margin-top:10px}
 @media(max-width:560px){.reconcileHead{flex-direction:column}.reconcileRowTitle{align-items:flex-start;flex-direction:column}}
+
+/* v0.44 evidence diagnostics */
+.evidenceDiagnostic{margin-top:10px;padding:12px;border:1px solid var(--line);border-radius:12px;background:var(--soft);font-size:12px;line-height:1.55}
+.evidenceFileActions{display:flex;gap:8px;flex-wrap:wrap}
+.evidenceFileActions button{flex:1;min-width:130px}
+.dangerBtn{background:#fff0f1!important;border-color:#e8b7bd!important;color:#9a3744!important}
