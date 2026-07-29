@@ -837,3 +837,19 @@ html[data-dark="1"] .archiveDrugBtn,html[data-dark="1"] .restoreDrugBtn{backgrou
 .crisisFinishPanel{display:none;text-align:center;margin:12px 0;padding:18px;border:1px solid #2aa66f;border-radius:15px;background:color-mix(in srgb,#2aa66f 7%,var(--card))}.crisisFinishPanel.show{display:block}.crisisFinishPanel h3{margin:0 0 6px;color:#178452}.crisisFinishPanel button{margin-top:8px}
 .crisisOps .timerPresetRow{display:none}.crisisOps .crisisModule.timerModule summary span:after{content:' • optional'}
 @media(max-width:650px){.crisisCard{padding:11px}.crisisStep{padding-left:48px}.crisisProgressTrack{max-width:none}.crisisProgress{flex-wrap:wrap}.crisisProgressTrack{order:3;flex-basis:100%}.stepContextTime{font-size:25px}}
+
+/* v0.63.1 Crisis readability correction */
+.crisisCriticalStrip{display:none!important}
+.crisisStep{padding-right:54px!important;min-height:0!important;transition:border-color .16s ease,box-shadow .16s ease!important}
+.crisisStep.current{box-shadow:none!important}
+.stepMain{display:block!important;padding:14px 0!important}
+.stepCurrentBadge,.stepSummary,.stepFooter,.stepTapHint,.stepStateBadge,.nextStepPreview{display:none!important}
+.stepBody{display:block!important;color:var(--text)!important;opacity:1!important}
+.stepBody>*{order:initial!important}
+.stepNaButton{position:absolute;right:10px;top:12px;z-index:2;padding:5px 7px!important;font-size:10px!important;line-height:1!important;color:var(--muted);background:var(--card);border:1px solid var(--line);border-radius:7px}
+.stepContextTimers{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:8px;margin-top:12px}
+.stepContextTimer{margin:0!important;background:var(--card)!important}
+.stepContextTimer.due{border-color:var(--danger)!important;box-shadow:0 0 0 2px color-mix(in srgb,var(--danger) 16%,transparent)!important}
+.stepContextTimer.due .stepContextTime{font-size:20px;color:var(--danger)}
+.crisisStep.done,.crisisStep.progress,.crisisStep.na{opacity:1!important;filter:none!important;background:var(--card)!important}
+@media(max-width:650px){.stepContextTimers{grid-template-columns:1fr}.crisisStep{padding-right:48px!important}}
