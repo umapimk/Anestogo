@@ -1,4 +1,4 @@
-# Anesthculator v0.62
+# Anesthculator v0.63
 
 Anesthesia dose, dilution and perioperative crisis decision-support prototype.
 Offline-capable PWA, deployable to GitHub Pages with no build step.
@@ -10,9 +10,9 @@ Offline-capable PWA, deployable to GitHub Pages with no build step.
 
 ---
 
-## What changed in v0.62
+## What changed in v0.63
 
-v0.62 is a **safety and correctness release**. No new clinical content was
+v0.63 is a **safety and correctness release**. No new clinical content was
 added and no existing dose value was altered.
 
 ### 1. Fixed a 1000-fold volume error (critical)
@@ -21,7 +21,7 @@ added and no existing dose value was altered.
 checking that the two units matched. Any record where the dose was in mcg but
 the stock was in mg/mL produced a volume 1000× too large:
 
-| Record | Dose | Stock | v0.60 showed | v0.62 shows |
+| Record | Dose | Stock | v0.60 showed | v0.63 shows |
 |---|---|---|---|---|
 | Esmolol bolus | 250 mcg/kg | 10 mg/mL | 1500 mL | **1.5 mL** |
 | Esmolol infusion | 50 mcg/kg/min | 10 mg/mL | 300 mL | **0.3 mL** |
@@ -142,14 +142,14 @@ sql/                Supabase schema and migrations
 
 ---
 
-## v0.62 safety hardening status
+## v0.63 safety hardening status
 
 - Added an IndexedDB mirror for locally verified records, local drugs and classification data while retaining localStorage as a compatibility cache. Browser storage is still not a permanent archive; use the new full safety backup export/import.
 - IBW is explicitly labelled **Lemmens BMI-22**. The formula was not silently changed to Devine because that would alter dose behaviour.
 - Blocking `alert()` messages are replaced with non-blocking in-app notifications.
 - Ondansetron calculated dosing is **locked** until population-specific records (adult/>12 years, pediatric ≤40 kg, pediatric >40 kg) are implemented and clinically re-verified.
 - Active crisis start time, steps, timers (absolute due timestamps), timeline and CPR roles persist across reload. CPR role assignment appears only for perioperative cardiac arrest.
-- Service-worker cache is versioned `v062-r1` and uses cache-first/stale-while-revalidate for the same-origin app shell.
+- Service-worker cache is versioned `v063-r1` and uses cache-first/stale-while-revalidate for the same-origin app shell.
 
 ### Remaining clinical requirement
 
@@ -161,3 +161,19 @@ This remains a workflow and calculation prototype. Institutional clinical
 approval and simulation testing are required before any patient-care
 deployment. Records marked `DOSE LOCKED`, `VERIFY` or `THAI CROSS-CHECK
 PENDING` have not completed source reconciliation and must not be relied on.
+
+## v0.63 — Interactive Crisis Checklist
+
+This release redesigns Crisis Mode for readability under stress:
+
+- status is shown by a left rail, icon, and badge rather than tinting the entire card;
+- completed steps keep full text contrast and collapse to a compact summary;
+- the next actionable step is highlighted and opened automatically;
+- a progress indicator shows completed steps;
+- contextual timers are embedded in relevant steps (including LAST lipid bolus/reassessment);
+- timer controls remain on a white, high-contrast card;
+- CPR role assignment remains limited to perioperative cardiac arrest;
+- Timeline stays collapsed until requested;
+- active crisis state and timer due timestamps continue to persist across reloads.
+
+Clinical algorithms and doses still require clinician review and simulation testing before patient use.

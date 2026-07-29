@@ -807,3 +807,33 @@ html[data-dark="1"] .archiveDrugBtn,html[data-dark="1"] .restoreDrugBtn{backgrou
 }
 
 .appToast{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom));transform:translate(-50%,20px);background:#142033;color:#fff;padding:11px 16px;border-radius:12px;box-shadow:0 8px 30px #0004;z-index:9999;opacity:0;pointer-events:none;transition:.2s;max-width:min(90vw,520px);font-weight:700}.appToast.show{opacity:1;transform:translate(-50%,0)}
+
+/* v0.63 Interactive Crisis Checklist */
+.crisisCard{border-top:0;padding:16px}
+.crisisProgress{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 12px;margin:8px 0 12px;border:1px solid var(--line);border-radius:13px;background:var(--card)}
+.crisisProgress b{font-size:14px}.crisisProgress strong{font-variant-numeric:tabular-nums;font-size:18px;color:var(--danger)}
+.crisisProgressTrack{height:7px;flex:1;max-width:300px;border-radius:999px;background:var(--soft);overflow:hidden}.crisisProgressFill{height:100%;background:#2aa66f;transition:width .22s ease}
+.crisisStep{cursor:pointer;overflow:hidden;padding:0 12px 0 52px;min-height:66px;border-left:5px solid #aeb5bd;background:var(--card)!important;opacity:1!important;filter:none!important;transition:border-color .2s ease,box-shadow .2s ease,min-height .22s ease}
+.crisisStep:before{left:12px;top:15px;background:#e9edf1!important;color:#26313d!important;border-radius:50%;width:28px;height:28px}
+.crisisStep:hover{box-shadow:0 5px 18px rgba(15,23,42,.07)}
+.crisisStep.current{border-color:#f39a18;box-shadow:0 0 0 2px color-mix(in srgb,#f39a18 22%,transparent)}
+.crisisStep.current:before,.crisisStep.progress:before{background:#f39a18!important;color:#fff!important;content:counter(step)}
+.crisisStep.done{border-color:#2aa66f;background:var(--card)!important;opacity:1!important}
+.crisisStep.done:before{content:'✓';background:#2aa66f!important;color:#fff!important}
+.crisisStep.na{border-color:#aeb5bd;background:var(--card)!important;opacity:1!important;filter:none!important}
+.crisisStep.na:before{content:'—';background:#e9edf1!important;color:#65707b!important}
+.stepMain{padding:14px 0 10px}.stepMain b{display:block;font-size:15px;line-height:1.35;color:var(--text)}
+.stepCurrentBadge{display:none;width:max-content;margin:0 0 7px;padding:4px 8px;border-radius:999px;background:#fff3df;color:#a96100;font-size:10px;font-weight:900;letter-spacing:.02em}
+.crisisStep.current .stepCurrentBadge{display:block}
+.stepBody{color:var(--text);line-height:1.48}.stepBody br+*{margin-top:4px}
+.stepSummary{display:none;padding:18px 0;color:var(--text);font-weight:800}.stepSummary small{display:block;margin-top:3px;color:var(--muted);font-weight:600}
+.crisisStep.collapsed .stepMain{display:none}.crisisStep.collapsed .stepSummary{display:block}
+.stepFooter{padding:0 0 11px;border-top:1px solid var(--line);margin-top:4px}.crisisStep.collapsed .stepFooter{position:absolute;right:9px;top:10px;border:0;padding:0;margin:0}.crisisStep.collapsed .stepTapHint,.crisisStep.collapsed [data-step-na]{display:none}
+.stepStateBadge{background:transparent!important;padding:4px 0;font-size:10px}.crisisStep.done .stepStateBadge{color:#178452}.crisisStep.current .stepStateBadge{color:#a96100}
+.stepContextTimer{margin:10px 0 4px;padding:12px;border:1px solid var(--line);border-radius:13px;background:var(--card);box-shadow:0 3px 12px rgba(15,23,42,.05)}
+.stepContextTimerHead{display:flex;justify-content:space-between;gap:8px;align-items:center}.stepContextTimerHead b{font-size:12px!important;text-transform:uppercase;color:var(--muted)!important}.stepContextTime{font-size:28px;font-weight:900;font-variant-numeric:tabular-nums;color:var(--danger)}
+.stepContextTimerActions{display:flex;gap:7px;margin-top:8px}.stepContextTimerActions button{flex:1;min-height:40px}
+.nextStepPreview{margin:10px 0 0;padding:10px 12px;border-radius:11px;background:var(--soft);font-size:12px}.nextStepPreview strong{display:block;color:var(--muted);font-size:9px;letter-spacing:.08em;margin-bottom:2px}
+.crisisFinishPanel{display:none;text-align:center;margin:12px 0;padding:18px;border:1px solid #2aa66f;border-radius:15px;background:color-mix(in srgb,#2aa66f 7%,var(--card))}.crisisFinishPanel.show{display:block}.crisisFinishPanel h3{margin:0 0 6px;color:#178452}.crisisFinishPanel button{margin-top:8px}
+.crisisOps .timerPresetRow{display:none}.crisisOps .crisisModule.timerModule summary span:after{content:' • optional'}
+@media(max-width:650px){.crisisCard{padding:11px}.crisisStep{padding-left:48px}.crisisProgressTrack{max-width:none}.crisisProgress{flex-wrap:wrap}.crisisProgressTrack{order:3;flex-basis:100%}.stepContextTime{font-size:25px}}
