@@ -1,23 +1,38 @@
 
 const $=x=>document.getElementById(x);
+function appNotify(message){const t=document.getElementById("appToast");if(!t){console.warn(message);return}t.textContent=String(message);t.classList.add("show");clearTimeout(appNotify._t);appNotify._t=setTimeout(()=>t.classList.remove("show"),3500)}
+window.alert=appNotify;
+const SAFETY_DB="AnesthculatorSafety",SAFETY_DB_VERSION=1,SAFETY_STORE="records";
+let safetyDBPromise=null;
+function openSafetyDB(){if(!("indexedDB" in window))return Promise.reject(new Error("IndexedDB unavailable"));if(safetyDBPromise)return safetyDBPromise;safetyDBPromise=new Promise((resolve,reject)=>{const r=indexedDB.open(SAFETY_DB,SAFETY_DB_VERSION);r.onupgradeneeded=()=>{const db=r.result;if(!db.objectStoreNames.contains(SAFETY_STORE))db.createObjectStore(SAFETY_STORE)};r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error)});return safetyDBPromise}
+async function safetyDBPut(key,value){try{const db=await openSafetyDB();await new Promise((res,rej)=>{const tx=db.transaction(SAFETY_STORE,"readwrite");tx.objectStore(SAFETY_STORE).put(value,key);tx.oncomplete=res;tx.onerror=()=>rej(tx.error)})}catch(e){console.warn("IndexedDB mirror unavailable",e)}}
+async function safetyDBDelete(key){try{const db=await openSafetyDB();const tx=db.transaction(SAFETY_STORE,"readwrite");tx.objectStore(SAFETY_STORE).delete(key)}catch(e){}}
+async function mirrorCriticalData(){const keys=["anesthLocalDrugs","anesthVerifiedDrugs","anesthVerifiedDoseRecords","anesthClassificationOverrides","anesthMultiClassOverrides","anesthCustomCategories","anesthArchivedLocalDrugs"];const data={};for(const k of keys){const v=localStorage.getItem(k);if(v!==null){try{data[k]=JSON.parse(v)}catch{data[k]=v}}}data.mirroredAt=new Date().toISOString();await safetyDBPut("clinicalLocalData",data)}
+const _setItem=Storage.prototype.setItem;Storage.prototype.setItem=function(k,v){_setItem.call(this,k,v);if(/^anesth(LocalDrugs|Verified|Classification|MultiClass|CustomCategories|Archived)/.test(k))queueMicrotask(mirrorCriticalData)};
+
+/* v0.62: drug records can arrive from the shared cloud library or from a
+   locally added drug, so any free-text field interpolated into innerHTML
+   is escaped. Previously only single quotes were handled, which meant a
+   name containing & or < silently broke the card. */
+const esc=v=>String(v??"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;").replace(/'/g,"&#39;");
 const D=[
-{id:"prop",name:"Propofol",phase:"Induction",context:"Induction bolus",sub:"",min:2,max:2.5,def:2,unit:"mg/kg",stock:10,stockUnit:"mg/mL",preferredTarget:10,preferredFinal:20,ci:"Known hypersensitivity to propofol/formulation components.",caution:"Requirements may be lower in elderly/debilitated patients.",ref:"DailyMed; RCAT/local cross-check pending",checked:1,verification:"SOURCE_VERIFIED",verificationNote:"DailyMed: adult ASA I–II induction 2–2.5 mg/kg; elderly/debilitated/ASA III–IV 1–1.5 mg/kg. Thai indication-level cross-check pending",ref:"DailyMed Propofol Injectable Emulsion prescribing information • Thai/RCAT cross-check pending",category:"Intravenous Induction Agents",categories:["Intravenous Induction Agents"],drugClass:"Alkylphenol Derivative"},
+{id:"prop",name:"Propofol",phase:"Induction",context:"Induction bolus",sub:"",min:2,max:2.5,def:2,unit:"mg/kg",stock:10,stockUnit:"mg/mL",preferredTarget:10,preferredFinal:20,ci:"Known hypersensitivity to propofol/formulation components.",caution:"Requirements may be lower in elderly/debilitated patients.", checked:1,verification:"SOURCE_VERIFIED",verificationNote:"DailyMed: adult ASA I–II induction 2–2.5 mg/kg; elderly/debilitated/ASA III–IV 1–1.5 mg/kg. Thai indication-level cross-check pending",ref:"DailyMed Propofol Injectable Emulsion prescribing information • Thai/RCAT cross-check pending",category:"Intravenous Induction Agents",categories:["Intravenous Induction Agents"],drugClass:"Alkylphenol Derivative"},
 {id:"thio",name:"Thiopental",phase:"Induction",context:"Induction bolus",sub:"",min:3,max:5,def:4,unit:"mg/kg",stock:25,stockUnit:"mg/mL",preferredTarget:25,preferredFinal:20,ci:"Source verification pending.",caution:"Starter value: verify before clinical use.",ref:"Thai institutional + Miller/Barash reconciliation pending",checked:0,category:"Intravenous Induction Agents",categories:["Intravenous Induction Agents"],drugClass:"Barbiturate (Thiobarbiturate)"},
-{id:"eto",name:"Etomidate",phase:"Induction",context:"Induction bolus",sub:"",min:.2,max:.3,def:.3,unit:"mg/kg",stock:2,stockUnit:"mg/mL",preferredTarget:2,preferredFinal:10,ci:"Hypersensitivity to etomidate.",caution:"Avoid prolonged infusion because of adrenal suppression.",ref:"DailyMed; Thai cross-check pending",checked:1,verification:"SOURCE_VERIFIED",verificationNote:"DailyMed: usual induction dose 0.3 mg/kg IV over 30–60 sec; inadequate data below age 10 in this label",ref:"DailyMed Etomidate Injection prescribing information • Thai/RCAT cross-check pending",category:"Intravenous Induction Agents",categories:["Intravenous Induction Agents"],drugClass:"Carboxylated Imidazole"},
+{id:"eto",name:"Etomidate",phase:"Induction",context:"Induction bolus",sub:"",min:.2,max:.3,def:.3,unit:"mg/kg",stock:2,stockUnit:"mg/mL",preferredTarget:2,preferredFinal:10,ci:"Hypersensitivity to etomidate.",caution:"Avoid prolonged infusion because of adrenal suppression.", checked:1,verification:"SOURCE_VERIFIED",verificationNote:"DailyMed: usual induction dose 0.3 mg/kg IV over 30–60 sec; inadequate data below age 10 in this label",ref:"DailyMed Etomidate Injection prescribing information • Thai/RCAT cross-check pending",category:"Intravenous Induction Agents",categories:["Intravenous Induction Agents"],drugClass:"Carboxylated Imidazole"},
 {id:"keta",name:"Ketamine",phase:"Induction",context:"Induction bolus",sub:"",min:1,max:2,def:2,unit:"mg/kg",stock:50,stockUnit:"mg/mL",preferredTarget:50,preferredFinal:10,ci:"When significant BP elevation would be a serious hazard; hypersensitivity.",caution:"Monitor cardiovascular response and airway.",ref:"DailyMed; Thai cross-check pending",checked:1,category:"Intravenous Induction Agents",categories:["Intravenous Induction Agents"],drugClass:"Phencyclidine Derivative (Dissociative)"},
 {id:"fent",name:"Fentanyl",phase:"Post-op",context:"Opioid analgesic",sub:"",min:1,max:2,def:1,unit:"mcg/kg",stock:50,stockUnit:"mcg/mL",preferredTarget:50,preferredFinal:10,ci:"Exact indication-specific verification pending.",caution:"Respiratory depression/chest-wall rigidity may occur.",ref:"Anesthesia-specific Thai verification pending",checked:0,phases:["Induction","Opioid","Maintenance","Post-op"],dosingRecords:[{phase:"Induction",context:"Induction opioid",min:1,max:2,def:1,unit:"mcg/kg",stock:50,stockUnit:"mcg/mL",ref:"Built-in starter • verify local anesthesia protocol",category:"Opioid Analgesics",categories:["Opioid Analgesics"],drugClass:"Phenylpiperidine Synthetic Opioid"},{phase:"Opioid",context:"Intraoperative analgesia",min:1,max:2,def:1,unit:"mcg/kg",stock:50,stockUnit:"mcg/mL",ref:"Built-in starter • verify local anesthesia protocol"},{phase:"Maintenance",context:"Supplemental analgesia",min:1,max:2,def:1,unit:"mcg/kg",stock:50,stockUnit:"mcg/mL",ref:"Built-in starter • verify local anesthesia protocol"},{phase:"Post-op",context:"Postoperative opioid option",min:0.5,max:1,def:0.5,unit:"mcg/kg",stock:50,stockUnit:"mcg/mL",ref:"Built-in starter • verify local anesthesia protocol"}]},
-{id:"roc-routine",name:"Rocuronium",phase:"NMB",context:"Routine intubation",sub:"Intubation / Initial",min:.6,max:.6,def:.6,unit:"mg/kg",stock:10,stockUnit:"mg/mL",preferredTarget:10,preferredFinal:10,ci:"Hypersensitivity to rocuronium or bromide.",caution:"Use neuromuscular monitoring.",ref:"DailyMed; Thai cross-check pending",checked:1,verification:"SOURCE_VERIFIED",verificationNote:"DailyMed: initial tracheal intubation dose 0.6 mg/kg",ref:"DailyMed Rocuronium Bromide Injection prescribing information • Thai/RCAT cross-check pending",category:"Neuromuscular Blocking Agents",categories:["Neuromuscular Blocking Agents"],drugClass:"Non-depolarizing Steroidal NMBA"},
-{id:"roc-rsi",name:"Rocuronium",phase:"NMB",context:"RSI",sub:"Intubation / Initial",min:.6,max:1.2,def:1.2,unit:"mg/kg",stock:10,stockUnit:"mg/mL",preferredTarget:10,preferredFinal:10,ci:"Hypersensitivity to rocuronium or bromide.",caution:"RSI dose/duration differs from routine intubation.",ref:"DailyMed; Thai cross-check pending",checked:1,verification:"SOURCE_VERIFIED",verificationNote:"DailyMed: RSI 0.6–1.2 mg/kg",ref:"DailyMed Rocuronium Bromide Injection prescribing information • Thai/RCAT cross-check pending",category:"Neuromuscular Blocking Agents",categories:["Neuromuscular Blocking Agents"],drugClass:"Non-depolarizing Steroidal NMBA"},
+{id:"roc-routine",name:"Rocuronium",phase:"NMB",context:"Routine intubation",sub:"Intubation / Initial",min:.6,max:.6,def:.6,unit:"mg/kg",stock:10,stockUnit:"mg/mL",preferredTarget:10,preferredFinal:10,ci:"Hypersensitivity to rocuronium or bromide.",caution:"Use neuromuscular monitoring.", checked:1,verification:"SOURCE_VERIFIED",verificationNote:"DailyMed: initial tracheal intubation dose 0.6 mg/kg",ref:"DailyMed Rocuronium Bromide Injection prescribing information • Thai/RCAT cross-check pending",category:"Neuromuscular Blocking Agents",categories:["Neuromuscular Blocking Agents"],drugClass:"Non-depolarizing Steroidal NMBA"},
+{id:"roc-rsi",name:"Rocuronium",phase:"NMB",context:"RSI",sub:"Intubation / Initial",min:.6,max:1.2,def:1.2,unit:"mg/kg",stock:10,stockUnit:"mg/mL",preferredTarget:10,preferredFinal:10,ci:"Hypersensitivity to rocuronium or bromide.",caution:"RSI dose/duration differs from routine intubation.", checked:1,verification:"SOURCE_VERIFIED",verificationNote:"DailyMed: RSI 0.6–1.2 mg/kg",ref:"DailyMed Rocuronium Bromide Injection prescribing information • Thai/RCAT cross-check pending",category:"Neuromuscular Blocking Agents",categories:["Neuromuscular Blocking Agents"],drugClass:"Non-depolarizing Steroidal NMBA"},
 {id:"sux",name:"Succinylcholine",phase:"NMB",context:"Intubation / RSI",sub:"Intubation / Initial",min:1,max:1.5,def:1,unit:"mg/kg",stock:20,stockUnit:"mg/mL",preferredTarget:20,preferredFinal:10,ci:"High-alert contraindications require exact source review.",caution:"Screen MH susceptibility and hyperkalemia risk; pediatric restrictions matter.",ref:"Full Thai/product verification required",checked:0,category:"Neuromuscular Blocking Agents",categories:["Neuromuscular Blocking Agents"],drugClass:"Depolarizing NMBA"},
 {id:"cis-i",name:"Cisatracurium",phase:"NMB",context:"Intubation",sub:"Intubation / Initial",min:.15,max:.2,def:.15,unit:"mg/kg",stock:2,stockUnit:"mg/mL",preferredTarget:2,preferredFinal:10,ci:"Source verification pending.",caution:"Verify exact label/local protocol.",ref:"Thai/product verification pending",checked:0,category:"Neuromuscular Blocking Agents",categories:["Neuromuscular Blocking Agents"],drugClass:"Non-depolarizing Benzylisoquinolinium NMBA"},
 {id:"atr-i",name:"Atracurium",phase:"NMB",context:"Intubation",sub:"Intubation / Initial",min:.4,max:.5,def:.5,unit:"mg/kg",stock:10,stockUnit:"mg/mL",preferredTarget:10,preferredFinal:10,ci:"Source verification pending.",caution:"Consider histamine-related effects.",ref:"Thai/product verification pending",checked:0,category:"Neuromuscular Blocking Agents",categories:["Neuromuscular Blocking Agents"],drugClass:"Non-depolarizing Benzylisoquinolinium NMBA"},
-{id:"roc-m",name:"Rocuronium",phase:"NMB",context:"Maintenance bolus",sub:"Maintenance / Redose",min:.1,max:.2,def:.1,unit:"mg/kg",stock:10,stockUnit:"mg/mL",preferredTarget:10,preferredFinal:10,ci:"Hypersensitivity to rocuronium or bromide.",caution:"Redose based on TOF/neuromuscular monitoring.",ref:"Exact maintenance reconciliation pending",checked:0,verification:"SOURCE_VERIFIED",verificationNote:"DailyMed: maintenance 0.1, 0.15 or 0.2 mg/kg guided by recovery/TOF",ref:"DailyMed Rocuronium Bromide Injection prescribing information • Thai/RCAT cross-check pending",category:"Neuromuscular Blocking Agents",categories:["Neuromuscular Blocking Agents"],drugClass:"Non-depolarizing Steroidal NMBA"},
+{id:"roc-m",name:"Rocuronium",phase:"NMB",context:"Maintenance bolus",sub:"Maintenance / Redose",min:.1,max:.2,def:.1,unit:"mg/kg",stock:10,stockUnit:"mg/mL",preferredTarget:10,preferredFinal:10,ci:"Hypersensitivity to rocuronium or bromide.",caution:"Redose based on TOF/neuromuscular monitoring.", checked:0,verification:"SOURCE_VERIFIED",verificationNote:"DailyMed: maintenance 0.1, 0.15 or 0.2 mg/kg guided by recovery/TOF",ref:"DailyMed Rocuronium Bromide Injection prescribing information • Thai/RCAT cross-check pending",category:"Neuromuscular Blocking Agents",categories:["Neuromuscular Blocking Agents"],drugClass:"Non-depolarizing Steroidal NMBA"},
 {id:"cis-m",name:"Cisatracurium",phase:"NMB",context:"Maintenance bolus",sub:"Maintenance / Redose",min:.02,max:.03,def:.03,unit:"mg/kg",stock:2,stockUnit:"mg/mL",preferredTarget:2,preferredFinal:10,ci:"Source verification pending.",caution:"Guide with TOF.",ref:"Thai/product verification pending",checked:0,category:"Neuromuscular Blocking Agents",categories:["Neuromuscular Blocking Agents"],drugClass:"Non-depolarizing Benzylisoquinolinium NMBA"},
 {id:"atr-m",name:"Atracurium",phase:"NMB",context:"Maintenance bolus",sub:"Maintenance / Redose",min:.08,max:.1,def:.1,unit:"mg/kg",stock:10,stockUnit:"mg/mL",preferredTarget:10,preferredFinal:10,ci:"Source verification pending.",caution:"Guide with TOF.",ref:"Thai/product verification pending",checked:0,category:"Neuromuscular Blocking Agents",categories:["Neuromuscular Blocking Agents"],drugClass:"Non-depolarizing Benzylisoquinolinium NMBA"},
 {id:"roc-inf",name:"Rocuronium",phase:"NMB",context:"Continuous infusion",sub:"Continuous infusion",min:10,max:12,def:10,unit:"mcg/kg/min",stock:10,stockUnit:"mg/mL",preferredTarget:1,preferredFinal:50,ci:"Hypersensitivity to rocuronium or bromide.",caution:"Start after early evidence of spontaneous recovery from an intubating dose and titrate to neuromuscular monitoring.",ref:"DailyMed Rocuronium Bromide Injection: initial continuous infusion 10–12 mcg/kg/min • Thai/RCAT cross-check pending",checked:0,verification:"SOURCE_VERIFIED",verificationNote:"DailyMed continuous infusion initial rate 10–12 mcg/kg/min after early spontaneous recovery",category:"Neuromuscular Blocking Agents",categories:["Neuromuscular Blocking Agents"],drugClass:"Non-depolarizing Steroidal NMBA"},
 {id:"sug",name:"Sugammadex",phase:"Reversal",context:"Depth-of-block dependent",sub:"",min:2,max:4,def:2,unit:"mg/kg",stock:100,stockUnit:"mg/mL",preferredTarget:100,preferredFinal:5,ci:"Verify hypersensitivity and renal restrictions.",caution:"Dose depends on depth of block and monitoring.",ref:"Product-label structure; Thai verification pending",checked:1,category:"Reversal Agents & Antidotes",categories:["Reversal Agents & Antidotes"],drugClass:"Modified Gamma-Cyclodextrin"},
-{id:"neo",name:"Neostigmine",phase:"Reversal",context:"Reversal option",sub:"",min:.03,max:.07,def:.05,unit:"mg/kg",stock:1,stockUnit:"mg/mL",preferredTarget:1,preferredFinal:10,ci:"Hypersensitivity; peritonitis; mechanical GI/urinary obstruction.",caution:"Give appropriate antimuscarinic; max requires verification.",ref:"DailyMed; Thai cross-check pending",checked:1,verification:"SOURCE_VERIFIED",verificationNote:"DailyMed: reversal 0.03–0.07 mg/kg IV; max 0.07 mg/kg or 5 mg, whichever is less; anticholinergic prior/concomitant",ref:"DailyMed Neostigmine Methylsulfate Injection prescribing information • Thai/RCAT cross-check pending",category:"Reversal Agents & Antidotes",categories:["Reversal Agents & Antidotes"],drugClass:"Acetylcholinesterase Inhibitor"},
-{id:"ond",name:"Ondansetron",phase:"PONV",context:"PONV prophylaxis",sub:"",min:.1,max:.1,def:.1,unit:"mg/kg",stock:2,stockUnit:"mg/mL",preferredTarget:2,preferredFinal:4,ci:"Hypersensitivity; concomitant apomorphine.",caution:"QT prolongation risk; verify age/indication.",ref:"DailyMed; Thai cross-check pending",checked:1,verification:"SOURCE_VERIFIED",verificationNote:"DailyMed PONV: adults/>12 y 4 mg; pediatric 1 month–12 y ≤40 kg 0.1 mg/kg, >40 kg 4 mg. Current generic card remains pediatric-weight based and should branch by age/weight",ref:"DailyMed Ondansetron Injection PONV table • Thai/local PONV cross-check pending",category:"Antiemetics (PONV)",categories:["Antiemetics (PONV)"],drugClass:"5-HT3 Receptor Antagonist"},
+{id:"neo",name:"Neostigmine",phase:"Reversal",context:"Reversal option",sub:"",min:.03,max:.07,def:.05,unit:"mg/kg",stock:1,stockUnit:"mg/mL",preferredTarget:1,preferredFinal:10,ci:"Hypersensitivity; peritonitis; mechanical GI/urinary obstruction.",caution:"Give appropriate antimuscarinic; max requires verification.", checked:1,verification:"SOURCE_VERIFIED",verificationNote:"DailyMed: reversal 0.03–0.07 mg/kg IV; max 0.07 mg/kg or 5 mg, whichever is less; anticholinergic prior/concomitant",ref:"DailyMed Neostigmine Methylsulfate Injection prescribing information • Thai/RCAT cross-check pending",category:"Reversal Agents & Antidotes",categories:["Reversal Agents & Antidotes"],drugClass:"Acetylcholinesterase Inhibitor"},
+{id:"ond",name:"Ondansetron",phase:"PONV",context:"PONV prophylaxis",sub:"",doseLocked:true,stock:2,stockUnit:"mg/mL",preferredTarget:2,preferredFinal:4,ci:"Hypersensitivity; concomitant apomorphine.",caution:"DOSE LOCKED: age/weight branching is not yet implemented. Verify indication, age and weight against the approved protocol.",checked:0,verification:"CLINICAL_LOGIC_CONFLICT",verificationNote:"Dose display locked because the existing generic weight-based rule conflicts with the source note: adults/>12 y 4 mg; pediatric 1 month–12 y ≤40 kg 0.1 mg/kg; >40 kg 4 mg. Split into population-specific dose records before re-verification.",ref:"DailyMed Ondansetron Injection PONV table • Thai/local PONV cross-check pending",category:"Antiemetics (PONV)",categories:["Antiemetics (PONV)"],drugClass:"5-HT3 Receptor Antagonist"},
 {id:"dex",name:"Dexamethasone",phase:"PONV",context:"PONV prophylaxis",sub:"",min:.1,max:.15,def:.1,unit:"mg/kg",stock:4,stockUnit:"mg/mL",preferredTarget:4,preferredFinal:4,ci:"PONV-specific source reconciliation pending.",caution:"Consider hyperglycemia and institutional PONV protocol.",ref:"Thai verification pending",checked:0,category:"Antiemetics (PONV)",categories:["Antiemetics (PONV)"],drugClass:"Corticosteroid"},
 {id:"para",name:"Paracetamol IV",phase:"Post-op",context:"Non-opioid analgesia",sub:"",min:10,max:15,def:15,unit:"mg/kg",stock:10,stockUnit:"mg/mL",preferredTarget:10,preferredFinal:100,ci:"Age/weight/product-specific restrictions require verification.",caution:"Count all acetaminophen routes; consider hepatic risk.",ref:"Local product verification pending",checked:0,category:"Non-Opioid Analgesics & Co-analgesics",categories:["Non-Opioid Analgesics & Co-analgesics"],drugClass:"Central Analgesic / Antipyretic"},
 {id:"morph",name:"Morphine",phase:"Post-op",context:"Opioid option",sub:"",min:.05,max:.1,def:.05,unit:"mg/kg",stock:10,stockUnit:"mg/mL",preferredTarget:10,preferredFinal:10,ci:"Respiratory depression and other opioid contraindications require review.",caution:"Starter anesthesia value; verify local protocol.",ref:"Thai anesthesia dose verification pending",checked:0,category:"Opioid Analgesics",categories:["Opioid Analgesics"],drugClass:"Natural Opium Alkaloid"},
@@ -33,7 +48,7 @@ const D=[
 {id:"ephed",name:"Ephedrine",phase:"Hemodynamics",context:"Vasopressor bolus",sub:"Vasopressor",min:5,max:10,def:5,unit:"mg",stock:5,stockUnit:"mg/mL",preferredTarget:5,preferredFinal:10,ci:"Tachyarrhythmia/severe hypertension and product-specific contraindications.",caution:"Common perioperative bolus entry; verify local practice.",ref:"LOCAL ANESTHESIA PROTOCOL VERIFICATION REQUIRED",checked:0,category:"Vasoactive & Inotropic Drugs",categories:["Vasoactive & Inotropic Drugs"],drugClass:"Mixed Alpha/Beta Sympathomimetic"},
 {id:"norepi",name:"Norepinephrine",phase:"Hemodynamics",context:"IV infusion",sub:"Vasopressor",min:.02,max:.2,def:.05,unit:"mcg/kg/min",stock:16,stockUnit:"mcg/mL",preferredTarget:16,preferredFinal:50,ci:"Correct severe hypovolemia when feasible; ischemia/extravasation risks.",caution:"Concentration varies widely by institution; editable stock/working concentration is essential.",ref:"LOCAL ANESTHESIA/ICU PROTOCOL VERIFICATION REQUIRED",checked:0}
 ,
-{id:"midaz",name:"Midazolam",phase:"Sedation",context:"Premedication / procedural sedation",sub:"",doseLocked:true,stock:1,stockUnit:"mg/mL",ci:"Respiratory depression; hypersensitivity; formulation/route-specific contraindications apply.",caution:"Dose varies substantially by age, route and indication. Included but locked pending Thai + label reconciliation.",ref:"Dose locked — RCAT/institutional + product-label verification pending",checked:0,category:"Vasoactive & Inotropic Drugs",categories:["Vasoactive & Inotropic Drugs"],drugClass:"Potent Alpha/Beta-1 Vasopressor"},
+{id:"midaz",name:"Midazolam",phase:"Sedation",context:"Premedication / procedural sedation",sub:"",doseLocked:true,stock:1,stockUnit:"mg/mL",ci:"Respiratory depression; hypersensitivity; formulation/route-specific contraindications apply.",caution:"Dose varies substantially by age, route and indication. Included but locked pending Thai + label reconciliation.",ref:"Dose locked — RCAT/institutional + product-label verification pending",checked:0,category:"Premedication & Anxiolytics",categories:["Premedication & Anxiolytics"],drugClass:"Short-acting Benzodiazepine"},
 {id:"dexmed",name:"Dexmedetomidine",phase:"Sedation",context:"Procedural sedation / infusion",sub:"",doseLocked:true,stock:100,stockUnit:"mcg/mL",preferredTarget:4,preferredFinal:50,ci:"Hypersensitivity; clinically significant bradycardia/hypotension require caution.",caution:"Current U.S. label includes adult procedural sedation and pediatric non-invasive procedural sedation; dosing varies by age/indication.",ref:"DailyMed dexmedetomidine label updated May 2026; exact age/indication dosing locked pending Thai reconciliation",checked:1,category:"Premedication & Anxiolytics",categories:["Premedication & Anxiolytics"],drugClass:"Alpha-2 Adrenergic Agonist"},
 {id:"remi",name:"Remifentanil",phase:"Maintenance",context:"Analgesic infusion / TIVA adjunct",sub:"",doseLocked:true,stock:1000,stockUnit:"mcg/mL",preferredTarget:20,preferredFinal:50,ci:"Opioid contraindications/formulation-specific restrictions; requires controlled infusion.",caution:"Potent ultra-short opioid; dose varies by induction/maintenance/spontaneous ventilation.",ref:"Dose locked — product label + Thai anesthesia reconciliation pending",checked:0,category:"Opioid Analgesics",categories:["Opioid Analgesics"],drugClass:"Ester-linked Synthetic Opioid"},
 {id:"tramadol",name:"Tramadol",phase:"Post-op",category:"Analgesics",context:"Post-op analgesia",sub:"",doseLocked:true,stock:50,stockUnit:"mg/mL",ci:"Seizure risk, serotonergic interactions, opioid contraindications; pediatric restrictions apply.",caution:"Dose and age restrictions vary by jurisdiction/product.",ref:"Dose locked — Thai product/institutional verification pending",checked:0},
@@ -49,9 +64,9 @@ const D=[
 {id:"haloperidol",name:"Haloperidol",phase:"PONV",category:"Antiemetics",context:"Antiemetic / agitation context",sub:"",doseLocked:true,stock:5,stockUnit:"mg/mL",ci:"QT prolongation, Parkinsonism/Lewy-body sensitivity and other product-specific contraindications.",caution:"Not a routine default PONV drug in all institutions.",ref:"Dose locked — local verification pending",checked:0},
 {id:"dimen",name:"Dimenhydrinate",phase:"PONV",category:"Antiemetics",context:"PONV / motion-related nausea",sub:"",doseLocked:true,stock:50,stockUnit:"mg/mL",ci:"Anticholinergic/sedating adverse effects; age and formulation restrictions.",caution:"Local use varies.",ref:"Dose locked — product/local verification pending",checked:0},
 
-{id:"lidocaine-la",name:"Lidocaine (Xylocaine)",phase:"Local",context:"Local / regional anesthesia",sub:"",doseLocked:true,stock:20,stockUnit:"mg/mL",ci:"Amide local-anesthetic hypersensitivity; dose depends on site, epinephrine use and patient factors.",caution:"Maximum safe dose depends on formulation, use of epinephrine, site and comorbidity. LAST risk applies.",ref:"ASRA regional-anesthesia/LAST safety framework • exact max-dose table requires product + Thai/RCAT/local verification",checked:0,verification:"SOURCE_VERIFIED",verificationNote:"DailyMed adult maximum: without epinephrine 4.5 mg/kg, generally max 300 mg; with epinephrine 7 mg/kg, generally max 500 mg. Technique/site-specific dose tables still apply; pediatric maximum is age/weight dependent",ref:"DailyMed Lidocaine HCl Injection maximum dosage • ASRA LAST safety framework • Thai/local cross-check pending",category:"Local Anesthetics",categories:["Local Anesthetics"],drugClass:"Amide Local Anesthetic / Class IB Antiarrhythmic"},
-{id:"bupiv",name:"Bupivacaine",phase:"Local",context:"Regional / infiltration",sub:"",doseLocked:true,stock:5,stockUnit:"mg/mL",ci:"Amide local-anesthetic hypersensitivity; obstetric paracervical block restrictions and formulation-specific warnings.",caution:"Cardiotoxicity/LAST risk; max dose highly context dependent.",ref:"ASRA regional-anesthesia/LAST safety framework • product + Thai/RCAT/local verification pending",checked:0,verification:"SOURCE_VERIFIED",verificationNote:"DailyMed adult guide: local infiltration up to 175 mg without epinephrine; peripheral block 25–175 mg without epinephrine; historical maximum single-dose experience up to 225 mg with epinephrine; total daily dose not to exceed 400 mg. Individualize by site/patient",ref:"DailyMed Bupivacaine HCl Injection dosage table • ASRA LAST safety framework • Thai/local cross-check pending",category:"Local Anesthetics",categories:["Local Anesthetics"],drugClass:"Amide Local Anesthetic (Long-acting)"},
-{id:"ropi",name:"Ropivacaine",phase:"Local",context:"Regional / infusion",sub:"",doseLocked:true,stock:2,stockUnit:"mg/mL",ci:"Amide local-anesthetic hypersensitivity; route-specific contraindications.",caution:"Regional block and infusion doses differ.",ref:"ASRA regional-anesthesia/LAST safety framework • product + Thai/RCAT/local verification pending",checked:0,verification:"SOURCE_VERIFIED",verificationNote:"DailyMed adult tables are technique-specific: major nerve block 75–300 mg depending concentration/site; field block/infiltration up to 200 mg; postoperative epidural infusion 12–28 mg/h. No single universal dose should replace technique-specific records",ref:"DailyMed Ropivacaine HCl Injection dosage table • ASRA LAST safety framework • Thai/local cross-check pending",category:"Local Anesthetics",categories:["Local Anesthetics"],drugClass:"Amide Local Anesthetic (S-enantiomer)"},
+{id:"lidocaine-la",name:"Lidocaine (Xylocaine)",phase:"Local",context:"Local / regional anesthesia",sub:"",doseLocked:true,stock:20,stockUnit:"mg/mL",ci:"Amide local-anesthetic hypersensitivity; dose depends on site, epinephrine use and patient factors.",caution:"Maximum safe dose depends on formulation, use of epinephrine, site and comorbidity. LAST risk applies.", checked:0,verification:"SOURCE_VERIFIED",verificationNote:"DailyMed adult maximum: without epinephrine 4.5 mg/kg, generally max 300 mg; with epinephrine 7 mg/kg, generally max 500 mg. Technique/site-specific dose tables still apply; pediatric maximum is age/weight dependent",ref:"DailyMed Lidocaine HCl Injection maximum dosage • ASRA LAST safety framework • Thai/local cross-check pending",category:"Local Anesthetics",categories:["Local Anesthetics"],drugClass:"Amide Local Anesthetic / Class IB Antiarrhythmic"},
+{id:"bupiv",name:"Bupivacaine",phase:"Local",context:"Regional / infiltration",sub:"",doseLocked:true,stock:5,stockUnit:"mg/mL",ci:"Amide local-anesthetic hypersensitivity; obstetric paracervical block restrictions and formulation-specific warnings.",caution:"Cardiotoxicity/LAST risk; max dose highly context dependent.", checked:0,verification:"SOURCE_VERIFIED",verificationNote:"DailyMed adult guide: local infiltration up to 175 mg without epinephrine; peripheral block 25–175 mg without epinephrine; historical maximum single-dose experience up to 225 mg with epinephrine; total daily dose not to exceed 400 mg. Individualize by site/patient",ref:"DailyMed Bupivacaine HCl Injection dosage table • ASRA LAST safety framework • Thai/local cross-check pending",category:"Local Anesthetics",categories:["Local Anesthetics"],drugClass:"Amide Local Anesthetic (Long-acting)"},
+{id:"ropi",name:"Ropivacaine",phase:"Local",context:"Regional / infusion",sub:"",doseLocked:true,stock:2,stockUnit:"mg/mL",ci:"Amide local-anesthetic hypersensitivity; route-specific contraindications.",caution:"Regional block and infusion doses differ.", checked:0,verification:"SOURCE_VERIFIED",verificationNote:"DailyMed adult tables are technique-specific: major nerve block 75–300 mg depending concentration/site; field block/infiltration up to 200 mg; postoperative epidural infusion 12–28 mg/h. No single universal dose should replace technique-specific records",ref:"DailyMed Ropivacaine HCl Injection dosage table • ASRA LAST safety framework • Thai/local cross-check pending",category:"Local Anesthetics",categories:["Local Anesthetics"],drugClass:"Amide Local Anesthetic (S-enantiomer)"},
 {id:"levo",name:"Levobupivacaine",phase:"Local",context:"Regional / infiltration",sub:"",doseLocked:true,stock:5,stockUnit:"mg/mL",ci:"Amide local-anesthetic hypersensitivity; route-specific contraindications.",caution:"Max-dose and block-specific dosing require source verification.",ref:"ASRA regional-anesthesia safety framework • Thai product/local protocol verification pending",checked:0,category:"Local Anesthetics",categories:["Local Anesthetics"],drugClass:"Amide Local Anesthetic (S-enantiomer)"},
 
 {id:"epi-inf",name:"Epinephrine",phase:"Hemodynamics",context:"Vasopressor / inotrope infusion",sub:"Vasopressor / inotrope",doseLocked:true,stock:1000,stockUnit:"mcg/mL",preferredTarget:20,preferredFinal:50,ci:"Tachyarrhythmia/ischemia risk; correct hypovolemia when appropriate.",caution:"Current U.S. label for septic-shock hypotension permits 0.05–2 mcg/kg/min, but perioperative dosing should remain local-protocol driven.",ref:"DailyMed epinephrine label updated 2026; perioperative default locked pending Thai reconciliation",checked:1,category:"Vasoactive & Inotropic Drugs",categories:["Vasoactive & Inotropic Drugs"],drugClass:"Potent Alpha/Beta Agonist / Inotrope"},
@@ -79,7 +94,7 @@ const D=[
 {id:"carboprost",name:"Carboprost",phase:"Obstetric",context:"Uterotonic",sub:"",doseLocked:true,stock:.25,stockUnit:"mg/mL",ci:"Asthma/bronchospasm risk is important.",caution:"Use in postpartum hemorrhage protocols; local obstetric verification required.",ref:"Dose locked — obstetric local protocol verification pending",checked:0,category:"Obstetric Anesthesia Specific",categories:["Obstetric Anesthesia Specific"],drugClass:"Prostaglandin F2-alpha Analog"},
 {id:"txa",name:"Tranexamic acid",phase:"Emergency",context:"Bleeding / antifibrinolytic",sub:"",doseLocked:true,stock:100,stockUnit:"mg/mL",ci:"Thrombotic/seizure/renal considerations; indication-specific restrictions.",caution:"Trauma, cardiac surgery, obstetric and other perioperative regimens differ.",ref:"Dose locked — procedure-specific Thai protocol verification pending",checked:0}
 ,
-{id:"mivacurium",name:"Mivacurium",phase:"NMB",context:"Neuromuscular blockade",sub:"Maintenance",doseLocked:true,stock:2,stockUnit:"mg/mL",ci:"Hypersensitivity; prolonged block with pseudocholinesterase deficiency or interacting drugs.",caution:"Stock sheet shows Mivacron/Nimbex-area NMB stock; exact product concentration and dosing must be verified locally.",ref:"Added from supplied OR stock sheet • dose locked pending RCAT/product verification",checked:0,category:"Hemostatic Agents & Blood Management",categories:["Hemostatic Agents & Blood Management"],drugClass:"Antifibrinolytic Lysine Analog"},
+{id:"mivacurium",name:"Mivacurium",phase:"NMB",context:"Neuromuscular blockade",sub:"Maintenance",doseLocked:true,stock:2,stockUnit:"mg/mL",ci:"Hypersensitivity; prolonged block with pseudocholinesterase deficiency or interacting drugs.",caution:"Stock sheet shows Mivacron/Nimbex-area NMB stock; exact product concentration and dosing must be verified locally.",ref:"Added from supplied OR stock sheet • dose locked pending RCAT/product verification",checked:0,category:"Neuromuscular Blocking Agents",categories:["Neuromuscular Blocking Agents"],drugClass:"Short-acting Benzylisoquinolinium NMBA"},
 {id:"nefopam",name:"Nefopam (Acupan)",phase:"Post-op",category:"Analgesics",context:"Non-opioid analgesia",sub:"",doseLocked:true,stock:10,stockUnit:"mg/mL",ci:"Product-specific contraindications; seizure, anticholinergic and serotonergic cautions.",caution:"Sheet: ACUPAN INJ 20 mg/2 mL. IV/IM capable depending on local product instructions.",ref:"Supplied OR stock sheet • Thai product/local protocol verification pending",checked:0},
 {id:"hyoscine-butyl",name:"Hyoscine butylbromide (Buscopan)",phase:"Other",category:"Antispasmodics",context:"Antispasmodic",sub:"",doseLocked:true,stock:20,stockUnit:"mg/mL",ci:"Anticholinergic/product-specific contraindications including selected glaucoma, tachyarrhythmia, obstruction or megacolon contexts.",caution:"Sheet: BUSCOPAN 20 mg/1 mL. Verify route and local perioperative indication.",ref:"Supplied OR stock sheet • Thai product/local protocol verification pending",checked:0},
 {id:"chlorpheniramine",name:"Chlorpheniramine (CPM)",phase:"Emergency",category:"Antihistamines",context:"Allergic reaction adjunct",sub:"",doseLocked:true,stock:10,stockUnit:"mg/mL",ci:"Hypersensitivity and product-specific anticholinergic/sedation cautions.",caution:"Sheet: CPM inj 10 mg/1 mL. Antihistamine is adjunctive and must not delay epinephrine in anaphylaxis.",ref:"Supplied OR stock sheet • Thai product/local protocol verification pending",checked:0},
@@ -241,8 +256,15 @@ function derivedWeights(){
  if(bmi&&weight>0){
    lbw=sex==="Male"?(9270*weight)/(6680+216*bmi):(9270*weight)/(8780+244*bmi);
  }
- const adjbw=(ibw!=null)?ibw+0.4*(weight-ibw):null;
- return {TBW:weight,IBW:ibw,LBW:lbw,AdjBW:adjbw,bmi};
+ // v0.62: AdjBW is only meaningful when TBW > IBW. When TBW <= IBW the
+ // conventional practice is to dose on actual body weight, not a value
+ // below the patient's real weight.
+ let adjbw=null, adjbwFallback=false;
+ if(ibw!=null){
+   if(weight>ibw){adjbw=ibw+0.4*(weight-ibw)}
+   else{adjbw=weight;adjbwFallback=true}
+ }
+ return {TBW:weight,IBW:ibw,LBW:lbw,AdjBW:adjbw,bmi,adjbwFallback};
 }
 function normalizeWeightBasis(v){
  const x=String(v||"TBW").trim().toUpperCase();
@@ -252,13 +274,68 @@ function normalizeWeightBasis(v){
 }
 function weightBasisInfo(d){
  const basis=normalizeWeightBasis(d.dosingWeight||d.dosing_weight||d.weightBasis||"TBW"), w=derivedWeights(), kg=w[basis];
- const labels={TBW:"Actual Body Weight",IBW:"Ideal Body Weight",LBW:"Lean Body Weight",AdjBW:"Adjusted Body Weight"};
+ const labels={TBW:"Actual Body Weight",IBW:"IBW (Lemmens BMI-22)",LBW:"Lean Body Weight",AdjBW:"Adjusted Body Weight"};
  const formulas={TBW:"Patient-entered actual weight",IBW:"Lemmens (2005): 22 × height²",LBW:"Janmahasatian (2005)",AdjBW:"IBW + 0.4 × (TBW − IBW)"};
- return {basis,label:labels[basis],formula:formulas[basis],kg};
+ let formula=formulas[basis];
+ if(basis==="AdjBW"&&w.adjbwFallback)formula="TBW ≤ IBW — actual body weight used";
+ return {basis,label:labels[basis],formula,kg};
+}
+
+/* ============================================================
+   v0.62 UNIT ENGINE
+   Previously calc() divided the dose by the stock concentration
+   without checking that the dose unit and the stock unit matched.
+   A mcg/kg dose against a mg/mL stock produced a 1000-fold volume
+   error (e.g. esmolol 250 mcg/kg with 10 mg/mL stock reported
+   1500 mL instead of 1.5 mL).
+   Every mass unit is now normalised to mg before the division, and
+   any stock unit that is not a mass-per-mL (unit/mL, mg/vial,
+   percent) reports no volume at all instead of a meaningless number.
+   ============================================================ */
+const MASS_TO_MG={mcg:0.001,"µg":0.001,ug:0.001,mg:1,g:1000,gram:1000};
+function massFactor(u){
+ const x=String(u||"").trim().toLowerCase().split("/")[0].trim();
+ return Object.prototype.hasOwnProperty.call(MASS_TO_MG,x)?MASS_TO_MG[x]:null;
+}
+function stockIsPerMl(u){return /\/\s*m\s*l\s*$/i.test(String(u||"").trim())}
+function doseUnitLabel(u){
+ const x=String(u||"").trim().split("/")[0].trim();
+ return x||"mg";
 }
 function calc(d){
- let wb=weightBasisInfo(d), perKg=(d.unit||"").includes("/kg"), total=perKg?d.def*wb.kg:d.def, rate=(d.unit||"").includes("/hr")||(d.unit||"").includes("/min"), unit=(d.unit||"").startsWith("mcg")?"mcg":"mg", vol=total/d.stock;
- return{total,rate,unit,vol,weightBasis:wb};
+ const wb=weightBasisInfo(d);
+ const du=d.unit||"", su=d.stockUnit||"";
+ const perKg=du.includes("/kg");
+ const total=perKg?d.def*wb.kg:d.def;
+ const rate=du.includes("/hr")||du.includes("/min");
+ const unit=doseUnitLabel(du);
+
+ const df=massFactor(du), sf=massFactor(su);
+ const stockOk=isFinite(d.stock)&&d.stock>0;
+ const perMl=stockIsPerMl(su);
+ const convertible=df!=null&&sf!=null;
+ const volAvailable=convertible&&perMl&&stockOk&&isFinite(total);
+
+ // dose expressed in the same mass unit as the stock concentration
+ const totalInStockUnit=convertible&&isFinite(total)?total*(df/sf):null;
+ const vol=volAvailable?totalInStockUnit/d.stock:null;
+
+ let volNote="";
+ if(!volAvailable){
+   if(!convertible)volNote=`Stock unit "${su||"—"}" is not a mass concentration — volume must be worked out from the product label.`;
+   else if(!perMl)volNote=`Stock is expressed per ${String(su).split("/")[1]||"unit"}, not per mL — reconstitute first, then enter the resulting mg/mL.`;
+   else if(!stockOk)volNote="Stock concentration is missing or zero.";
+ }
+
+ return{
+   total,rate,unit,vol,
+   totalInStockUnit,
+   volAvailable,
+   volNote,
+   unitConverted:convertible&&df!==sf,
+   stockUnit:su,
+   weightBasis:wb
+ };
 }
 
 let dilutionPrefs=JSON.parse(localStorage.getItem("anesthDilutionPrefs")||"{}");
@@ -266,7 +343,17 @@ let stockPrefs=JSON.parse(localStorage.getItem("anesthStockPrefs")||"{}");
 D.forEach(d=>{if(stockPrefs[d.id]){d.stock=+stockPrefs[d.id].stock||d.stock;d.stockUnit=stockPrefs[d.id].stockUnit||d.stockUnit}});
 window.setStock=(id,v)=>{let d=findDrug(id),n=parseFloat(v);if(!d||!isFinite(n)||n<=0)return;d.stock=n;stockPrefs[id]={stock:d.stock,stockUnit:d.stockUnit};localStorage.setItem("anesthStockPrefs",JSON.stringify(stockPrefs));render()};
 window.setStockUnit=(id,u)=>{let d=findDrug(id);if(!d)return;d.stockUnit=u;stockPrefs[id]={stock:d.stock,stockUnit:u};localStorage.setItem("anesthStockPrefs",JSON.stringify(stockPrefs));render()};
-function workingLine(d,c){let p=dilutionPrefs[d.id];if(!p||!p.target)return ``;let draw=c.total/p.target,per=c.rate?(d.unit.includes("/hr")?"/hr":"/min"):"";return `<div class="working">Prepared: <b>${fmt(p.target)} ${d.stockUnit}</b> (${fmt(p.drugVol)} mL drug + ${fmt(p.dilVol)} mL ${p.diluent}, final ${fmt(p.final)} mL)<br><b>DRAW / ADMINISTER ${fmt(draw)} mL${per}</b></div>`}
+function workingLine(d,c){
+ let p=dilutionPrefs[d.id];if(!p||!p.target)return ``;
+ // v0.62: the prepared concentration is expressed in the stock unit, so the
+ // dose must be converted into that same unit before dividing.
+ let base=c.totalInStockUnit;
+ let per=c.rate?(d.unit.includes("/hr")?"/hr":"/min"):"";
+ let drawLine=(base==null||!isFinite(base))
+   ? `<b class="verify">DRAW / ADMINISTER — not computable (${esc(c.volNote||"unit mismatch")})</b>`
+   : `<b>DRAW / ADMINISTER ${fmt(base/p.target)} mL${per}</b>`;
+ return `<div class="working">Prepared: <b>${fmt(p.target)} ${esc(d.stockUnit)}</b> (${fmt(p.drugVol)} mL drug + ${fmt(p.dilVol)} mL ${esc(p.diluent)}, final ${fmt(p.final)} mL)<br>${drawLine}</div>`;
+}
 
 let hiddenDrugs=JSON.parse(localStorage.getItem("anesthHiddenDrugs")||"[]");
 
@@ -502,7 +589,7 @@ window.openVerify=(id,phase="",context="")=>{
  <label>Route</label>
  <select id="lvRoute"><option ${old.route==="IV"?"selected":""}>IV</option><option ${old.route==="IM"?"selected":""}>IM</option><option ${old.route==="IV/IM"?"selected":""}>IV/IM</option><option ${old.route==="Other"?"selected":""}>Other</option></select>
  <label>Dosing weight basis</label>
- <select id="lvWeightBasis"><option value="TBW" ${(old.dosingWeight||d.dosingWeight||"TBW")==="TBW"?"selected":""}>TBW — Actual Body Weight</option><option value="IBW" ${(old.dosingWeight||d.dosingWeight)==="IBW"?"selected":""}>IBW — Ideal Body Weight</option><option value="LBW" ${(old.dosingWeight||d.dosingWeight)==="LBW"?"selected":""}>LBW — Lean Body Weight</option><option value="AdjBW" ${(old.dosingWeight||d.dosingWeight)==="AdjBW"?"selected":""}>AdjBW — Adjusted Body Weight</option></select>
+ <select id="lvWeightBasis"><option value="TBW" ${(old.dosingWeight||d.dosingWeight||"TBW")==="TBW"?"selected":""}>TBW — Actual Body Weight</option><option value="IBW" ${(old.dosingWeight||d.dosingWeight)==="IBW"?"selected":""}>IBW — Lemmens BMI-22</option><option value="LBW" ${(old.dosingWeight||d.dosingWeight)==="LBW"?"selected":""}>LBW — Lean Body Weight</option><option value="AdjBW" ${(old.dosingWeight||d.dosingWeight)==="AdjBW"?"selected":""}>AdjBW — Adjusted Body Weight</option></select>
  <div class="note">Weight basis is verified per dose record. Existing records default to TBW until a different basis is explicitly verified.</div>
 
  <div class="localFormGrid">
@@ -594,9 +681,11 @@ function card(d){
  }
  let c=calc(d), per=c.rate?(d.unit.includes("/hr")?"/hr":"/min"):"";
  return `<div class="drug drugCardTheme" data-phase="${d.phase||'Other'}" data-cat="${drugCategories(d).join(" | ")}"><div class="categoryLabel">${drugCategory(d)}</div><h4>${d.name}</h4><div class="meta">${d.context} • ${d.def} ${d.unit}</div>
- <div class="stockEdit"><label>Stock concentration</label><input type="number" step="any" min="0.000001" value="${d.stock}" onchange="setStock('${d.id}',this.value)"><select onchange="setStockUnit('${d.id}',this.value)"><option ${d.stockUnit==="mg/mL"?"selected":""}>mg/mL</option><option ${d.stockUnit==="mcg/mL"?"selected":""}>mcg/mL</option></select></div>
+ <div class="stockEdit"><label>Stock concentration</label><input type="number" step="any" min="0.000001" value="${d.stock}" onchange="setStock('${d.id}',this.value)"><select onchange="setStockUnit('${d.id}',this.value)">${["mg/mL","mcg/mL"].includes(d.stockUnit)?"":`<option selected>${esc(d.stockUnit)}</option>`}<option ${d.stockUnit==="mg/mL"?"selected":""}>mg/mL</option><option ${d.stockUnit==="mcg/mL"?"selected":""}>mcg/mL</option></select></div>
  <div class="drawLabel">${c.rate?"PUMP RATE":"CALCULATED DOSE → DRAW"}</div>
- <div class="dose">${fmt(c.total)} ${c.unit}${per} → <b>${fmt(c.vol)} mL${per}</b></div>
+ <div class="dose">${fmt(c.total)} ${esc(c.unit)}${per} → ${c.volAvailable?`<b>${fmt(c.vol)} mL${per}</b>`:`<b class="noVolume">— mL</b>`}</div>
+ ${c.unitConverted?`<div class="unitConvNote">Unit conversion applied: dose in ${esc(c.unit)}, stock in ${esc(d.stockUnit)}.</div>`:""}
+ ${c.volAvailable?"":`<div class="badAlert">⚠ ${esc(c.volNote)}</div>`}
  ${workingLine(d,c)}
  <div class="tags">${d.localVerified?'<span class="verifiedBadge">LOCAL VERIFIED</span>':(d.verification==="SOURCE_VERIFIED"?'<span class="sourceVerifiedBadge">SOURCE VERIFIED</span>':`<span class="${d.checked?"":"verify"}">${d.checked?"SOURCE CHECKED":"VERIFY"}</span>`)}<span class="thaiPendingBadge">THAI CROSS-CHECK PENDING</span></div>
  ${d.verificationNote?`<div class="verificationBox">${d.verificationNote}</div>`:""}
@@ -1170,7 +1259,7 @@ window.openGenericDrugDetail=(encodedKey,remember=true)=>{
        ${(r.unit||rec.unit||"").includes("/kg")?`<tr class="weightBasisRow"><td>Dosing weight</td><td><b><span class="weightBasisBadge">${c.weightBasis.basis}</span> ${c.weightBasis.label}</b><br><span class="weightBasisValue">${fmt(c.weightBasis.kg)} kg</span><br><small>${c.weightBasis.formula}</small></td></tr>`:""}
        <tr><td>Calculated dose</td><td><span class="detailDose">${fmt(c.total)} ${c.unit}${c.rate?((rec.unit||"").includes("/hr")?"/hr":"/min"):""}</span></td></tr>
        <tr><td>Stock</td><td><b>${rec.stock} ${rec.stockUnit}</b> ${rec.stockOverridden?'<span class="overrideBadge">CUSTOM STOCK</span>':""}<br><button class="miniStockBtn" onclick="openStockEditor('${source.id}')">✏️ Edit stock</button></td></tr>
-       <tr><td>DRAW / Pump</td><td><b>${fmt(c.vol)} mL${c.rate?((rec.unit||"").includes("/hr")?"/hr":"/min"):""}</b></td></tr>
+       <tr><td>DRAW / Pump</td><td>${c.volAvailable?`<b>${fmt(c.vol)} mL${c.rate?((rec.unit||"").includes("/hr")?"/hr":"/min"):""}</b>`:`<b class="noVolume">—</b><br><small class="badAlert">⚠ ${esc(c.volNote)}</small>`}${c.unitConverted?`<br><small class="unitConvNote">converted ${esc(c.unit)} → ${esc(rec.stockUnit)}</small>`:""}</td></tr>
      </table>`}
      <div class="phaseRecordActions">
        <button class="dilutionRecordBtn" onclick='openDilutionRecord("${source.id}",${JSON.stringify(r.phase||rec.phase||"")},${JSON.stringify(r.context||rec.context||"")})'>💧 Dilution</button>
@@ -1302,14 +1391,21 @@ window.openDilution=id=>{
 });
 function updateDilution(){
  if(!dilutionDrug)return; let target=parseFloat($("dTarget").value)||0,final=parseFloat($("dFinal").value)||0,stock=dilutionDrug.stock,c=calc(dilutionDrug);
- let drugVol=target*final/stock,dilVol=final-drugVol,draw=target>0?c.total/target:NaN;
+ // v0.62: target concentration is in the stock unit, so use the dose already
+ // converted into that unit rather than the raw dose.
+ let doseInStockUnit=c.totalInStockUnit;
+ let drugVol=target*final/stock,dilVol=final-drugVol;
+ let draw=(target>0&&doseInStockUnit!=null&&isFinite(doseInStockUnit))?doseInStockUnit/target:NaN;
  $("dDiluentName").textContent=$("dDiluent").value;$("dDrugVol").textContent=fmt(drugVol)+" mL";$("dDiluentVol").textContent=fmt(dilVol)+" mL";
  $("dFinalLine").textContent=`${fmt(final)} mL @ ${fmt(target)} ${dilutionDrug.stockUnit}`;$("dDraw").textContent=fmt(draw)+(c.rate?(dilutionDrug.unit.includes("/hr")?" mL/hr":" mL/min"):" mL");
  let alerts=[]; if(target<=0||final<=0)alerts.push("Target concentration and final volume must be > 0.");
+ let notes=[];
+ if(doseInStockUnit==null||!isFinite(doseInStockUnit))alerts.push(c.volNote||"Dose unit and stock unit are not compatible; DRAW volume cannot be calculated.");
+ if(c.unitConverted)notes.push(`Dose is in ${c.unit} and the prepared concentration is in ${dilutionDrug.stockUnit}. The DRAW volume already accounts for this conversion.`);
  if(target>stock)alerts.push("Target concentration is higher than stock; this cannot be achieved by simple dilution.");
  if(dilVol<0)alerts.push("Calculated diluent volume is negative. Check target concentration.");
  if(draw>final && !c.rate)alerts.push("Required DRAW volume exceeds the prepared final volume.");
- $("dAlert").innerHTML=alerts.length?`<div class="badAlert">⚠ ${alerts.join(" ")}</div>`:"";
+ $("dAlert").innerHTML=(alerts.length?`<div class="badAlert">⚠ ${esc(alerts.join(" "))}</div>`:"")+(notes.length?`<div class="unitConvNote">ℹ ${esc(notes.join(" "))}</div>`:"");
  if(!alerts.length && target>0 && final>0){dilutionPrefs[dilutionDrug.id]={target,final,drugVol,dilVol,diluent:$("dDiluent").value};localStorage.setItem("anesthDilutionPrefs",JSON.stringify(dilutionPrefs));}
 
 }
@@ -1508,6 +1604,17 @@ function crisis(){
 
 let crisisStartedAt=null,crisisTicker=null,crisisLog=[];
 let crisisStepState={},crisisRoles={},crisisTimers=[],crisisSnapshotCount=0;
+const CRISIS_STATE_KEY="anesthCrisisStateV062";
+function saveCrisisState(){
+ const payload={version:1,cs,startedAt:crisisStartedAt?crisisStartedAt.getTime():null,log:crisisLog,steps:crisisStepState,roles:crisisRoles,timers:crisisTimers,snapshots:crisisSnapshotCount,savedAt:Date.now()};
+ try{localStorage.setItem(CRISIS_STATE_KEY,JSON.stringify(payload));safetyDBPut("crisisState",payload)}catch(e){console.warn("Crisis state save failed",e)}
+}
+function clearCrisisState(){try{localStorage.removeItem(CRISIS_STATE_KEY);safetyDBDelete("crisisState")}catch(e){}}
+function restoreCrisisState(){
+ try{const raw=localStorage.getItem(CRISIS_STATE_KEY);if(!raw)return false;const x=JSON.parse(raw);if(!x||!x.startedAt)return false;
+ cs=x.cs||cs;crisisStartedAt=new Date(x.startedAt);crisisLog=Array.isArray(x.log)?x.log:[];crisisStepState=x.steps||{};crisisRoles=x.roles||{};crisisTimers=Array.isArray(x.timers)?x.timers:[];crisisSnapshotCount=+x.snapshots||0;return true
+ }catch(e){console.warn("Crisis restore failed",e);return false}
+}
 const CRISIS_ROLES=["Team leader","Airway","Drugs","Circulation / CPR","Runner","Recorder"];
 const TIMER_PRESETS={
  default:[[120,"Reassess patient / rhythm"]],
@@ -1524,7 +1631,7 @@ function crisisClock(t){let sec=Math.max(0,Math.floor((t-(crisisStartedAt||t))/1
 function crisisAddLog(label,meta={}){
  let now=new Date(),elapsed=crisisStartedAt?crisisClock(now):"--:--";
  crisisLog.push({elapsed,time:now.toLocaleTimeString([], {hour:"2-digit",minute:"2-digit",second:"2-digit"}),label,crisis:cs,...meta});
- renderCrisisLog();
+ renderCrisisLog();saveCrisisState();
 }
 function renderCrisisLog(){
  let box=$("crisisLog"),count=$("crisisLogCount");if(!box||!count)return;count.textContent=crisisLog.length;
@@ -1533,7 +1640,7 @@ function renderCrisisLog(){
 function stepKey(i){return `${cs}:${i}`}
 function getStepState(i){return crisisStepState[stepKey(i)]||"todo"}
 function setStepState(i,state,title){
- crisisStepState[stepKey(i)]=state;applyStepVisual(i);
+ crisisStepState[stepKey(i)]=state;applyStepVisual(i);saveCrisisState();
  let labels={todo:"Reopened",progress:"In progress",done:"Completed",na:"Not applicable"};
  crisisAddLog(`${labels[state]}: ${title}`,{kind:"step",step:i,state});
 }
@@ -1552,7 +1659,7 @@ function renderRoleBoard(){
 }
 function timerText(sec){return `${String(Math.floor(sec/60)).padStart(2,"0")}:${String(sec%60).padStart(2,"0")}`}
 function addCrisisTimer(seconds,label){
- if(!crisisStartedAt)startCrisis();let id=Date.now()+Math.random();crisisTimers.push({id,label,due:Date.now()+seconds*1000,seconds,status:"running"});crisisAddLog(`Timer started: ${label} (${timerText(seconds)})`,{kind:"timer"});renderTimers();
+ if(!crisisStartedAt)startCrisis();let id=Date.now()+Math.random();crisisTimers.push({id,label,due:Date.now()+seconds*1000,seconds,status:"running"});saveCrisisState();crisisAddLog(`Timer started: ${label} (${timerText(seconds)})`,{kind:"timer"});renderTimers();
 }
 function renderTimers(){
  let box=$("crisisTimerList");if(!box)return;
@@ -1572,19 +1679,19 @@ function enhanceCrisisPanel(){
  let panel=$("cpanel");if(!panel)return;let card=panel.querySelector(".crisisCard");if(!card)return;
  let ops=document.createElement("section");ops.className="crisisOps";ops.innerHTML=`
  <div class="crisisCriticalStrip"><button type="button" data-mark="Help called">📣 CALL HELP</button><button type="button" data-mark="100% oxygen initiated">O₂ 100%</button><button type="button" data-mark="${C.find(c=>c[0]===cs)?.[1]||cs} diagnosis / event confirmed">✓ CONFIRM EVENT</button></div>
- <details class="crisisModule" open><summary>👥 Team roles <span>assign rapidly</span></summary><div id="crisisRoleBoard" class="crisisRoleBoard"></div></details>
- <details class="crisisModule" open><summary>⏱ Repeat timers <span>tap to start</span></summary><div class="timerPresetRow">${timerPresetButtons()}</div><div id="crisisTimerList" class="crisisTimerList"></div></details>
+ ${cs==="perls"?`<details class="crisisModule" open><summary>👥 CPR team roles <span>cardiac arrest only</span></summary><div id="crisisRoleBoard" class="crisisRoleBoard"></div></details>`:""}
+ <details class="crisisModule" open><summary>⏱ Step-linked timers <span>start when intervention begins</span></summary><div class="timerPresetRow">${timerPresetButtons()}</div><div id="crisisTimerList" class="crisisTimerList"></div></details>
  <details class="crisisModule"><summary>🔄 Reassessment loop <span>record current trajectory</span></summary><div class="reassessGrid"><button type="button" data-snapshot="Improving">↑ Improving</button><button type="button" data-snapshot="Unchanged">→ Unchanged</button><button type="button" data-snapshot="Deteriorating">↓ Deteriorating</button><button type="button" data-snapshot="ROSC / stable">✓ ROSC / Stable</button></div></details>`;
- let dx=card.querySelector(".crisisDx");(dx||card.firstChild).before(ops);renderRoleBoard();renderTimers();
+ let dx=card.querySelector(".crisisDx");(dx||card.firstChild).before(ops);if(cs==="perls")renderRoleBoard();renderTimers();
  panel.querySelectorAll(".crisisStep").forEach((el,i)=>{let n=i+1;el.dataset.step=n;el.setAttribute("role","button");el.setAttribute("tabindex","0");el.insertAdjacentHTML("beforeend",`<div class="stepFooter"><span class="stepTapHint">แตะการ์ด: Not started → In progress → Completed</span><span class="stepStateBadge"></span><button type="button" data-step-na="${n}">N/A</button></div>`);applyStepVisual(n)});
 }
 function startCrisis(){
- if(!crisisStartedAt){crisisStartedAt=new Date();crisisAddLog("Crisis mode started");}
+ if(!crisisStartedAt){crisisStartedAt=new Date();crisisAddLog("Crisis mode started");saveCrisisState();}
  $("crisisRunBar").hidden=false;$("crisisStartBtn").textContent="● CRISIS ACTIVE";$("crisisStartedAt").textContent="Started "+crisisStartedAt.toLocaleTimeString([], {hour:"2-digit",minute:"2-digit"});
  clearInterval(crisisTicker);crisisTicker=setInterval(tickCrisis,1000);tickCrisis();
 }
 function resetCrisis(){
- clearInterval(crisisTicker);crisisTicker=null;crisisStartedAt=null;crisisLog=[];crisisStepState={};crisisRoles={};crisisTimers=[];crisisSnapshotCount=0;
+ clearInterval(crisisTicker);crisisTicker=null;crisisStartedAt=null;crisisLog=[];crisisStepState={};crisisRoles={};crisisTimers=[];crisisSnapshotCount=0;clearCrisisState();
  $("crisisRunBar").hidden=true;$("crisisElapsed").textContent="00:00";$("crisisStartBtn").textContent="▶ START CRISIS";renderCrisisLog();crisis();
 }
 function filterCrisis(q){q=(q||"").trim().toLowerCase();$("cbuttons").querySelectorAll("button").forEach((b,i)=>{let item=C[i],match=!q||(item[1]+" "+item[0]).toLowerCase().includes(q);b.hidden=!match});let visible=[...$("cbuttons").querySelectorAll("button")].filter(b=>!b.hidden);if(q&&!visible.length)$("cpanel").innerHTML='<div class="crisisNoResult">ไม่พบเหตุการณ์ที่ตรงกับคำค้น</div>';else if(q&&visible.length&&!visible.some(b=>b.classList.contains("sel"))){visible[0].click()}else if(!q)crisis()}
@@ -1593,15 +1700,15 @@ document.addEventListener("click",e=>{
  let mark=e.target.closest("[data-mark]");if(mark){if(!crisisStartedAt)startCrisis();crisisAddLog(mark.dataset.mark);return}
  let claim=e.target.closest("[data-claim]");if(claim){let role=claim.dataset.claim,input=document.querySelector(`[data-role="${role}"]`),name=(input?.value||"").trim()||"Assigned";crisisRoles[role]=name;crisisAddLog(`${role} assigned: ${name}`,{kind:"role"});renderRoleBoard();return}
  let add=e.target.closest("[data-add-timer]");if(add){addCrisisTimer(+add.dataset.addTimer,add.dataset.timerLabel);return}
- let repeat=e.target.closest("[data-timer-repeat]");if(repeat){let t=crisisTimers.find(x=>String(x.id)===repeat.dataset.timerRepeat);if(t){t.due=Date.now()+t.seconds*1000;t.status="running";crisisAddLog(`Timer repeated: ${t.label}`);renderTimers()}return}
- let doneTimer=e.target.closest("[data-timer-done]");if(doneTimer){let t=crisisTimers.find(x=>String(x.id)===doneTimer.dataset.timerDone);if(t)crisisAddLog(`Timer acknowledged: ${t.label}`);crisisTimers=crisisTimers.filter(x=>String(x.id)!==doneTimer.dataset.timerDone);renderTimers();return}
+ let repeat=e.target.closest("[data-timer-repeat]");if(repeat){let t=crisisTimers.find(x=>String(x.id)===repeat.dataset.timerRepeat);if(t){t.due=Date.now()+t.seconds*1000;t.status="running";saveCrisisState();crisisAddLog(`Timer repeated: ${t.label}`);renderTimers()}return}
+ let doneTimer=e.target.closest("[data-timer-done]");if(doneTimer){let t=crisisTimers.find(x=>String(x.id)===doneTimer.dataset.timerDone);if(t)crisisAddLog(`Timer acknowledged: ${t.label}`);crisisTimers=crisisTimers.filter(x=>String(x.id)!==doneTimer.dataset.timerDone);saveCrisisState();renderTimers();return}
  let snap=e.target.closest("[data-snapshot]");if(snap){addSnapshot(snap.dataset.snapshot);return}
  let na=e.target.closest("[data-step-na]");if(na){e.stopPropagation();let el=na.closest(".crisisStep"),i=+na.dataset.step,title=el.querySelector("b")?.textContent||`Step ${i}`;setStepState(i,getStepState(i)==="na"?"todo":"na",title);return}
  let step=e.target.closest("#cpanel .crisisStep");if(step){if(!crisisStartedAt)startCrisis();cycleStep(step)}
 });
 $("crisisStartBtn").onclick=startCrisis;$("crisisResetBtn").onclick=resetCrisis;$("crisisSearch").oninput=e=>filterCrisis(e.target.value);
-$("copyCrisisLog").onclick=async()=>{let roleLine=Object.entries(crisisRoles).map(([r,n])=>`${r}: ${n}`).join(" | ");let text=[`Anesthculator Crisis Log`,roleLine?`Roles | ${roleLine}`:"",...crisisLog.map(x=>`${x.elapsed} | ${x.time} | ${x.label} | ${C.find(c=>c[0]===x.crisis)?.[1]||x.crisis}`)].filter(Boolean).join("\n");try{await navigator.clipboard.writeText(text);$("copyCrisisLog").textContent="✓ Copied";setTimeout(()=>$("copyCrisisLog").textContent="Copy log",1200)}catch(e){alert(text||"No log")}};
-renderCrisisLog();
+$("copyCrisisLog").onclick=async()=>{let roleLine=Object.entries(crisisRoles).map(([r,n])=>`${r}: ${n}`).join(" | ");let text=[`Anesthculator Crisis Timeline`,roleLine?`Roles | ${roleLine}`:"",...crisisLog.map(x=>`${x.elapsed} | ${x.time} | ${x.label} | ${C.find(c=>c[0]===x.crisis)?.[1]||x.crisis}`)].filter(Boolean).join("\n");try{await navigator.clipboard.writeText(text);$("copyCrisisLog").textContent="✓ Copied";setTimeout(()=>$("copyCrisisLog").textContent="Copy timeline",1200)}catch(e){alert(text||"No log")}};
+if(restoreCrisisState()){crisis();startCrisis();renderCrisisLog()}else renderCrisisLog();
 
 
 let dark=localStorage.getItem("anesthDark")=="1";function th(){document.documentElement.dataset.dark=dark?"1":"0";$("theme").textContent=dark?"☀":"☾"}th();$("theme").onclick=()=>{dark=!dark;localStorage.setItem("anesthDark",dark?"1":"0");th()}
@@ -1611,6 +1718,10 @@ $("dFinal").addEventListener("change",()=>render());
 $("dDiluent").addEventListener("change",()=>render());
 
 $("addDrugBtn").onclick=()=>openLocalDrugEditor();
+$("exportSafetyBtn").onclick=()=>{const keys=[];for(let i=0;i<localStorage.length;i++)keys.push(localStorage.key(i));const storage={};keys.filter(k=>k&&k.startsWith("anesth")).forEach(k=>{const v=localStorage.getItem(k);try{storage[k]=JSON.parse(v)}catch{storage[k]=v}});const payload={format:"AnesthculatorSafetyBackup",version:1,appVersion:"0.62",exportedAt:new Date().toISOString(),storage};const blob=new Blob([JSON.stringify(payload,null,2)],{type:"application/json"}),url=URL.createObjectURL(blob),a=document.createElement("a");a.href=url;a.download=`Anesthculator_Safety_Backup_${new Date().toISOString().slice(0,10)}.json`;a.click();URL.revokeObjectURL(url);mirrorCriticalData()};
+$("importSafetyBtn").onclick=()=>$("importSafetyFile").click();
+$("importSafetyFile").onchange=async e=>{const f=e.target.files?.[0];if(!f)return;try{const data=JSON.parse(await f.text());if(data.format!=="AnesthculatorSafetyBackup"||!data.storage)throw new Error("Unsupported backup format");Object.entries(data.storage).forEach(([k,v])=>localStorage.setItem(k,typeof v==="string"?v:JSON.stringify(v)));await mirrorCriticalData();appNotify("Safety backup imported. Reloading…");setTimeout(()=>location.reload(),700)}catch(err){appNotify("Import failed: "+err.message)}finally{e.target.value=""}};
+
 $("exportDrugsBtn").onclick=()=>{
  let payload={format:"AnesthculatorLocalDrugs",version:1,exportedAt:new Date().toISOString(),drugs:localDrugs};
  let blob=new Blob([JSON.stringify(payload,null,2)],{type:"application/json"});

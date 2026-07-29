@@ -1,0 +1,12 @@
+{
+  "name": "anesthculator",
+  "version": "0.61.0",
+  "description": "Anesthesia dose, dilution and perioperative crisis decision-support prototype",
+  "private": true,
+  "scripts": {
+    "test": "node test-calc.js && node validate.js",
+    "validate": "node validate.js",
+    "test:calc": "node test-calc.js"
+  },
+  "license": "UNLICENSED"
+}

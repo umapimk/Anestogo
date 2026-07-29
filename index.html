@@ -4,13 +4,13 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#f5f8fc">
-<title>Anesthculator v0.58</title>
+<title>Anesthculator v0.62</title>
 <link rel="manifest" href="./manifest.json">
 <link rel="stylesheet" href="./style.css">
 </head>
 <body>
 <header>
-  <div class="headerLeft"><button id="appBackBtn" class="appBackBtn" type="button" aria-label="Back" title="Back">← <span>Back</span></button><div class="brand"><span class="drop">💧</span><div><b>Anesthculator <small>v0.58</small></b><em>Calm OR • Thailand Edition</em></div></div></div>
+  <div class="headerLeft"><button id="appBackBtn" class="appBackBtn" type="button" aria-label="Back" title="Back">← <span>Back</span></button><div class="brand"><span class="drop">💧</span><div><b>Anesthculator <small>v0.62</small></b><em>Calm OR • Thailand Edition</em></div></div></div>
   <button id="theme">☾</button>
 </header>
 
@@ -116,9 +116,9 @@
   <div id="cbuttons" class="cbuttons"></div>
   <div id="cpanel"></div>
   <details id="crisisLogPanel" class="crisisLogPanel">
-    <summary>🕒 Event log <span id="crisisLogCount">0</span></summary>
+    <summary>🕒 Timeline <span id="crisisLogCount">0</span></summary>
     <div id="crisisLog" class="crisisLog"></div>
-    <button id="copyCrisisLog" type="button">Copy log</button>
+    <button id="copyCrisisLog" type="button">Copy timeline</button>
   </details>
 </section>
 
@@ -147,6 +147,9 @@
   </div>
   <div class="libraryManage">
     <button id="exportDrugsBtn">⬆️ Export Local Drugs</button>
+    <button id="exportSafetyBtn">🛡 Export Safety Backup</button>
+    <button id="importSafetyBtn">🛡 Import Safety Backup</button>
+    <input id="importSafetyFile" type="file" accept="application/json,.json" hidden>
     <button id="importDrugsBtn">⬇️ Import Local Drugs</button>
     <input id="importDrugsFile" type="file" accept="application/json,.json" hidden>
   </div>
@@ -188,7 +191,7 @@
 <small>Examples: Fentanyl, Morphine, Remifentanil, Sufentanil, Pethidine/Meperidine and Hydromorphone are forced to primary category <b>Opioid Analgesics</b>. Paracetamol, Parecoxib and Ketorolac remain <b>Non-Opioid Analgesics & Co-analgesics</b>. Legacy contradictory browser overrides are automatically cleaned on first load.</small>
 </div>
 <div class="refCard"><b>v0.23 Verification Batch 1</b>
-<p>Source-level verification completed for Propofol induction, Etomidate induction, Rocuronium intubation/RSI/maintenance/infusion, Neostigmine reversal, Ondansetron PONV labeling, Lidocaine adult maximums, Bupivacaine adult technique-specific limits, Ropivacaine adult technique-specific tables, RCAT/MHAUS dantrolene crisis source, and ASRA LAST lipid-emulsion source.</p>
+<p>Source-level verification completed for Propofol induction, Etomidate induction, Rocuronium intubation/RSI/maintenance/infusion, Neostigmine reversal, Lidocaine adult maximums, Bupivacaine adult technique-specific limits, Ropivacaine adult technique-specific tables, RCAT/MHAUS dantrolene crisis source, and ASRA LAST lipid-emulsion source.</p>
 <small>Thai indication-level cross-check remains pending where an authoritative Thai source has not yet been reconciled. Remaining Drug Library entries stay VERIFY or DOSE LOCKED.</small></div>
 <div class="refCard"><b>International anesthesia</b><p>Miller • Barash • ASA • SPA • current product labels (DailyMed/FDA where applicable)</p><small>v0.12 formulary includes dose-locked drugs when a verified dose record has not yet been reconciled with Thailand practice.</small></div>
   <div class="refCard"><b>AHA 2025 CPR/ECC</b><p>Adult Advanced Life Support • Pediatric Advanced Life Support (AHA/AAP) • Adult & Pediatric Special Circumstances of Resuscitation</p><small>Used primarily for resuscitation, peri-arrest, rhythm-specific and special-circumstance cross-checking.</small></div>
@@ -359,5 +362,6 @@
 
 <script src="./app.js"></script>
 <script src="./cloud.js"></script>
+<div id="appToast" class="appToast" role="status" aria-live="polite"></div>
 </body>
 </html>
