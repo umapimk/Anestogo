@@ -1503,7 +1503,107 @@ function crisis(){
    h=`<div class="crisisCard"><h2>Laryngospasm</h2>${perlsBanner()}<div class="crisisDx"><b>Recognition</b>Inspiratory obstruction/stridor or silent complete obstruction, poor air movement, paradoxical chest movement and falling SpO₂ around airway stimulation.</div><div class="crisisSteps"><div class="crisisStep"><b>Remove stimulus + call for help</b><br>100% oxygen, airway-opening maneuver/jaw thrust, clear blood/secretions and apply CPAP with effective mask seal.</div><div class="crisisStep"><b>Deepen anesthesia if appropriate</b><br>Medication dosing is intentionally not displayed in this build until pediatric/adult laryngospasm drug doses are reconciled against the agreed Thai institutional sources.</div><div class="crisisStep"><b>If persistent complete obstruction / hypoxemia</b><br>Prepare neuromuscular blockade and tracheal intubation per institutional difficult-airway/emergency protocol.</div></div><div class="sourceTag">Algorithm structure included; drug-level Thai verification pending</div></div>`;
  }
  $("cpanel").innerHTML=h;
+ enhanceCrisisPanel();
 }
+
+let crisisStartedAt=null,crisisTicker=null,crisisLog=[];
+let crisisStepState={},crisisRoles={},crisisTimers=[],crisisSnapshotCount=0;
+const CRISIS_ROLES=["Team leader","Airway","Drugs","Circulation / CPR","Runner","Recorder"];
+const TIMER_PRESETS={
+ default:[[120,"Reassess patient / rhythm"]],
+ perls:[[120,"Rhythm check"],[240,"Epinephrine window"]],
+ mh:[[600,"Reassess response / repeat dantrolene"],[900,"Reassess response / repeat dantrolene"]],
+ last:[[180,"Reassess after lipid / circulation"],[900,"Confirm stability before stopping lipid"]],
+ ana:[[120,"Reassess BP / airway / adrenaline response"]],
+ brady:[[120,"Reassess rhythm and perfusion"]],
+ hem:[[300,"Repeat ABG / ionized Ca / coagulation review"]],
+ hyperk:[[300,"Repeat ECG / potassium / glucose"]],
+ hypogly:[[900,"Repeat glucose"]]
+};
+function crisisClock(t){let sec=Math.max(0,Math.floor((t-(crisisStartedAt||t))/1000));return String(Math.floor(sec/60)).padStart(2,"0")+":"+String(sec%60).padStart(2,"0")}
+function crisisAddLog(label,meta={}){
+ let now=new Date(),elapsed=crisisStartedAt?crisisClock(now):"--:--";
+ crisisLog.push({elapsed,time:now.toLocaleTimeString([], {hour:"2-digit",minute:"2-digit",second:"2-digit"}),label,crisis:cs,...meta});
+ renderCrisisLog();
+}
+function renderCrisisLog(){
+ let box=$("crisisLog"),count=$("crisisLogCount");if(!box||!count)return;count.textContent=crisisLog.length;
+ box.innerHTML=crisisLog.length?crisisLog.map(x=>`<div class="crisisLogItem"><time>${x.elapsed}</time><div><b>${x.label}</b><br><small>${x.time} • ${C.find(c=>c[0]===x.crisis)?.[1]||x.crisis}</small></div></div>`).join(""):`<div class="note">ยังไม่มีรายการ</div>`;
+}
+function stepKey(i){return `${cs}:${i}`}
+function getStepState(i){return crisisStepState[stepKey(i)]||"todo"}
+function setStepState(i,state,title){
+ crisisStepState[stepKey(i)]=state;applyStepVisual(i);
+ let labels={todo:"Reopened",progress:"In progress",done:"Completed",na:"Not applicable"};
+ crisisAddLog(`${labels[state]}: ${title}`,{kind:"step",step:i,state});
+}
+function applyStepVisual(i){
+ let el=document.querySelector(`#cpanel .crisisStep[data-step="${i}"]`);if(!el)return;
+ let state=getStepState(i);el.classList.remove("todo","progress","done","na");el.classList.add(state);el.dataset.state=state;
+ let badge=el.querySelector(".stepStateBadge");if(badge)badge.textContent={todo:"NOT STARTED",progress:"IN PROGRESS",done:"COMPLETED",na:"N/A"}[state];
+}
+function cycleStep(el){
+ let i=+el.dataset.step,title=el.querySelector("b")?.textContent||`Step ${i}`;
+ let order=["todo","progress","done","todo"],state=getStepState(i),next=order[(order.indexOf(state)+1)%order.length];setStepState(i,next,title);
+}
+function renderRoleBoard(){
+ let board=$("crisisRoleBoard");if(!board)return;
+ board.innerHTML=CRISIS_ROLES.map((r,i)=>`<label><span>${r}</span><input data-role="${r}" value="${crisisRoles[r]||""}" placeholder="ชื่อ / initials"><button type="button" data-claim="${r}">${crisisRoles[r]?"Change":"Claim"}</button></label>`).join("");
+}
+function timerText(sec){return `${String(Math.floor(sec/60)).padStart(2,"0")}:${String(sec%60).padStart(2,"0")}`}
+function addCrisisTimer(seconds,label){
+ if(!crisisStartedAt)startCrisis();let id=Date.now()+Math.random();crisisTimers.push({id,label,due:Date.now()+seconds*1000,seconds,status:"running"});crisisAddLog(`Timer started: ${label} (${timerText(seconds)})`,{kind:"timer"});renderTimers();
+}
+function renderTimers(){
+ let box=$("crisisTimerList");if(!box)return;
+ box.innerHTML=crisisTimers.length?crisisTimers.map(t=>{let left=Math.max(0,Math.ceil((t.due-Date.now())/1000)),due=t.status==="due";return `<div class="crisisTimer ${due?"due":""}" data-timer-id="${t.id}"><div><b>${t.label}</b><small>${due?"DUE NOW":timerText(left)}</small></div><button type="button" data-timer-repeat="${t.id}">↻ Repeat</button><button type="button" data-timer-done="${t.id}">✓</button></div>`}).join(""):`<div class="note">ยังไม่มี active timer</div>`;
+}
+function tickCrisis(){
+ if(crisisStartedAt&&$("crisisElapsed"))$("crisisElapsed").textContent=crisisClock(new Date());
+ let changed=false;crisisTimers.forEach(t=>{if(t.status==="running"&&Date.now()>=t.due){t.status="due";changed=true;crisisAddLog(`TIMER DUE: ${t.label}`,{kind:"timer_due"});}});renderTimers();
+}
+function timerPresetButtons(){return (TIMER_PRESETS[cs]||TIMER_PRESETS.default).map(x=>`<button type="button" data-add-timer="${x[0]}" data-timer-label="${x[1]}">⏱ ${x[1]} · ${timerText(x[0])}</button>`).join("")}
+function addSnapshot(status){
+ if(!crisisStartedAt)startCrisis();crisisSnapshotCount++;
+ let done=[...document.querySelectorAll("#cpanel .crisisStep.done")].length,total=document.querySelectorAll("#cpanel .crisisStep").length;
+ crisisAddLog(`Reassessment #${crisisSnapshotCount}: ${status}; steps ${done}/${total} completed`,{kind:"snapshot"});
+}
+function enhanceCrisisPanel(){
+ let panel=$("cpanel");if(!panel)return;let card=panel.querySelector(".crisisCard");if(!card)return;
+ let ops=document.createElement("section");ops.className="crisisOps";ops.innerHTML=`
+ <div class="crisisCriticalStrip"><button type="button" data-mark="Help called">📣 CALL HELP</button><button type="button" data-mark="100% oxygen initiated">O₂ 100%</button><button type="button" data-mark="${C.find(c=>c[0]===cs)?.[1]||cs} diagnosis / event confirmed">✓ CONFIRM EVENT</button></div>
+ <details class="crisisModule" open><summary>👥 Team roles <span>assign rapidly</span></summary><div id="crisisRoleBoard" class="crisisRoleBoard"></div></details>
+ <details class="crisisModule" open><summary>⏱ Repeat timers <span>tap to start</span></summary><div class="timerPresetRow">${timerPresetButtons()}</div><div id="crisisTimerList" class="crisisTimerList"></div></details>
+ <details class="crisisModule"><summary>🔄 Reassessment loop <span>record current trajectory</span></summary><div class="reassessGrid"><button type="button" data-snapshot="Improving">↑ Improving</button><button type="button" data-snapshot="Unchanged">→ Unchanged</button><button type="button" data-snapshot="Deteriorating">↓ Deteriorating</button><button type="button" data-snapshot="ROSC / stable">✓ ROSC / Stable</button></div></details>`;
+ let dx=card.querySelector(".crisisDx");(dx||card.firstChild).before(ops);renderRoleBoard();renderTimers();
+ panel.querySelectorAll(".crisisStep").forEach((el,i)=>{let n=i+1;el.dataset.step=n;el.setAttribute("role","button");el.setAttribute("tabindex","0");el.insertAdjacentHTML("beforeend",`<div class="stepFooter"><span class="stepTapHint">แตะการ์ด: Not started → In progress → Completed</span><span class="stepStateBadge"></span><button type="button" data-step-na="${n}">N/A</button></div>`);applyStepVisual(n)});
+}
+function startCrisis(){
+ if(!crisisStartedAt){crisisStartedAt=new Date();crisisAddLog("Crisis mode started");}
+ $("crisisRunBar").hidden=false;$("crisisStartBtn").textContent="● CRISIS ACTIVE";$("crisisStartedAt").textContent="Started "+crisisStartedAt.toLocaleTimeString([], {hour:"2-digit",minute:"2-digit"});
+ clearInterval(crisisTicker);crisisTicker=setInterval(tickCrisis,1000);tickCrisis();
+}
+function resetCrisis(){
+ clearInterval(crisisTicker);crisisTicker=null;crisisStartedAt=null;crisisLog=[];crisisStepState={};crisisRoles={};crisisTimers=[];crisisSnapshotCount=0;
+ $("crisisRunBar").hidden=true;$("crisisElapsed").textContent="00:00";$("crisisStartBtn").textContent="▶ START CRISIS";renderCrisisLog();crisis();
+}
+function filterCrisis(q){q=(q||"").trim().toLowerCase();$("cbuttons").querySelectorAll("button").forEach((b,i)=>{let item=C[i],match=!q||(item[1]+" "+item[0]).toLowerCase().includes(q);b.hidden=!match});let visible=[...$("cbuttons").querySelectorAll("button")].filter(b=>!b.hidden);if(q&&!visible.length)$("cpanel").innerHTML='<div class="crisisNoResult">ไม่พบเหตุการณ์ที่ตรงกับคำค้น</div>';else if(q&&visible.length&&!visible.some(b=>b.classList.contains("sel"))){visible[0].click()}else if(!q)crisis()}
+
+document.addEventListener("click",e=>{
+ let mark=e.target.closest("[data-mark]");if(mark){if(!crisisStartedAt)startCrisis();crisisAddLog(mark.dataset.mark);return}
+ let claim=e.target.closest("[data-claim]");if(claim){let role=claim.dataset.claim,input=document.querySelector(`[data-role="${role}"]`),name=(input?.value||"").trim()||"Assigned";crisisRoles[role]=name;crisisAddLog(`${role} assigned: ${name}`,{kind:"role"});renderRoleBoard();return}
+ let add=e.target.closest("[data-add-timer]");if(add){addCrisisTimer(+add.dataset.addTimer,add.dataset.timerLabel);return}
+ let repeat=e.target.closest("[data-timer-repeat]");if(repeat){let t=crisisTimers.find(x=>String(x.id)===repeat.dataset.timerRepeat);if(t){t.due=Date.now()+t.seconds*1000;t.status="running";crisisAddLog(`Timer repeated: ${t.label}`);renderTimers()}return}
+ let doneTimer=e.target.closest("[data-timer-done]");if(doneTimer){let t=crisisTimers.find(x=>String(x.id)===doneTimer.dataset.timerDone);if(t)crisisAddLog(`Timer acknowledged: ${t.label}`);crisisTimers=crisisTimers.filter(x=>String(x.id)!==doneTimer.dataset.timerDone);renderTimers();return}
+ let snap=e.target.closest("[data-snapshot]");if(snap){addSnapshot(snap.dataset.snapshot);return}
+ let na=e.target.closest("[data-step-na]");if(na){e.stopPropagation();let el=na.closest(".crisisStep"),i=+na.dataset.step,title=el.querySelector("b")?.textContent||`Step ${i}`;setStepState(i,getStepState(i)==="na"?"todo":"na",title);return}
+ let step=e.target.closest("#cpanel .crisisStep");if(step){if(!crisisStartedAt)startCrisis();cycleStep(step)}
+});
+$("crisisStartBtn").onclick=startCrisis;$("crisisResetBtn").onclick=resetCrisis;$("crisisSearch").oninput=e=>filterCrisis(e.target.value);
+$("copyCrisisLog").onclick=async()=>{let roleLine=Object.entries(crisisRoles).map(([r,n])=>`${r}: ${n}`).join(" | ");let text=[`Anesthculator Crisis Log`,roleLine?`Roles | ${roleLine}`:"",...crisisLog.map(x=>`${x.elapsed} | ${x.time} | ${x.label} | ${C.find(c=>c[0]===x.crisis)?.[1]||x.crisis}`)].filter(Boolean).join("\n");try{await navigator.clipboard.writeText(text);$("copyCrisisLog").textContent="✓ Copied";setTimeout(()=>$("copyCrisisLog").textContent="Copy log",1200)}catch(e){alert(text||"No log")}};
+renderCrisisLog();
+
+
 let dark=localStorage.getItem("anesthDark")=="1";function th(){document.documentElement.dataset.dark=dark?"1":"0";$("theme").textContent=dark?"☀":"☾"}th();$("theme").onclick=()=>{dark=!dark;localStorage.setItem("anesthDark",dark?"1":"0");th()}
 $("dilutionDialog").addEventListener("close",()=>render());
 $("dTarget").addEventListener("change",()=>render());

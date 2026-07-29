@@ -99,8 +99,27 @@
 
 <section id="crisis" class="tab">
   <div class="head"><div><span class="red">EMERGENCY MODE</span><h2>🚨 Crisis / Special Events</h2></div><strong id="cchip"></strong></div>
+  <div class="crisisToolbar">
+    <input id="crisisSearch" type="search" placeholder="🔎 ค้นหาเหตุการณ์ เช่น anaphylaxis, airway, bleeding">
+    <button id="crisisStartBtn" type="button" class="crisisStartBtn">▶ START CRISIS</button>
+    <button id="crisisResetBtn" type="button">↺ Reset</button>
+  </div>
+  <div id="crisisRunBar" class="crisisRunBar" hidden>
+    <div><span class="liveDot"></span><b id="crisisElapsed">00:00</b><small id="crisisStartedAt"></small></div>
+    <div class="crisisRunActions">
+      <button type="button" data-mark="Help called">📣 Help</button>
+      <button type="button" data-mark="100% oxygen">O₂ 100%</button>
+      <button type="button" data-mark="CPR started">CPR</button>
+      <button type="button" data-mark="ROSC / stabilized">✓ ROSC/Stable</button>
+    </div>
+  </div>
   <div id="cbuttons" class="cbuttons"></div>
   <div id="cpanel"></div>
+  <details id="crisisLogPanel" class="crisisLogPanel">
+    <summary>🕒 Event log <span id="crisisLogCount">0</span></summary>
+    <div id="crisisLog" class="crisisLog"></div>
+    <button id="copyCrisisLog" type="button">Copy log</button>
+  </details>
 </section>
 
 <section id="library" class="tab">
