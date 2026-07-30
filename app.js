@@ -1742,6 +1742,9 @@ function resetCrisis(){
 function filterCrisis(q){q=(q||"").trim().toLowerCase();$("cbuttons").querySelectorAll("button").forEach((b,i)=>{let item=C[i],match=!q||(item[1]+" "+item[0]).toLowerCase().includes(q);b.hidden=!match});let visible=[...$("cbuttons").querySelectorAll("button")].filter(b=>!b.hidden);if(q&&!visible.length)$("cpanel").innerHTML='<div class="crisisNoResult">ไม่พบเหตุการณ์ที่ตรงกับคำค้น</div>';else if(q&&visible.length&&!visible.some(b=>b.classList.contains("sel"))){visible[0].click()}else if(!q)crisis()}
 
 document.addEventListener("click",e=>{
+ let clue=e.target.closest("[data-reasoning-clue]");if(clue){let id=clue.dataset.reasoningClue;if(fastReasoningClues.has(id))fastReasoningClues.delete(id);else fastReasoningClues.add(id);renderHypotension();document.querySelector(".fastReasoning")?.scrollIntoView({behavior:"smooth",block:"start"});return}
+ let rr=e.target.closest("[data-reasoning-response]");if(rr){fastReasoningResponse=rr.dataset.reasoningResponse;renderHypotension();return}
+ let resetReasoning=e.target.closest("[data-reasoning-reset]");if(resetReasoning){fastReasoningClues.clear();fastReasoningResponse="";renderHypotension();return}
  let decisionChoice=e.target.closest("[data-decision-choice]");if(decisionChoice){e.stopPropagation();if(!crisisStartedAt)startCrisis();let step=+decisionChoice.dataset.decisionStep,choice=decisionChoice.dataset.decisionChoice,target=+decisionChoice.dataset.decisionTarget;crisisDecisions[stepKey(step)]=choice;saveCrisisState();let decision=decisionForStep(step);crisisAddLog(`Reassessment: ${choice==="yes"?decision?.yes:decision?.no}`,{kind:"decision",step,choice});let node=decisionChoice.closest(".stepDecisionNode");node?.querySelectorAll(".decisionBranch").forEach(b=>b.classList.toggle("selected",b===decisionChoice));let current=document.querySelector(`#cpanel .crisisStep[data-step="${step}"]`);if(current&&getStepState(step)!=="done")setStepState(step,"done",current.querySelector(".stepTitleText")?.textContent||`Step ${step}`);requestAnimationFrame(()=>{let next=document.querySelector(`#cpanel .crisisStep[data-step="${target}"]`);next?.scrollIntoView({behavior:"smooth",block:"center"});next?.classList.add("decisionTargetFlash");setTimeout(()=>next?.classList.remove("decisionTargetFlash"),1400)});return}
  let claim=e.target.closest("[data-claim]");if(claim){let role=claim.dataset.claim,input=document.querySelector(`[data-role="${role}"]`),name=(input?.value||"").trim()||"Assigned";crisisRoles[role]=name;crisisAddLog(`${role} assigned: ${name}`,{kind:"role"});renderRoleBoard();return}
  let add=e.target.closest("[data-add-timer]");if(add){addCrisisTimer(+add.dataset.addTimer,add.dataset.timerLabel);return}
@@ -1763,7 +1766,7 @@ $("dFinal").addEventListener("change",()=>render());
 $("dDiluent").addEventListener("change",()=>render());
 
 $("addDrugBtn").onclick=()=>openLocalDrugEditor();
-$("exportSafetyBtn").onclick=()=>{const keys=[];for(let i=0;i<localStorage.length;i++)keys.push(localStorage.key(i));const storage={};keys.filter(k=>k&&k.startsWith("anesth")).forEach(k=>{const v=localStorage.getItem(k);try{storage[k]=JSON.parse(v)}catch{storage[k]=v}});const payload={format:"AnesthculatorSafetyBackup",version:1,appVersion:"0.70",exportedAt:new Date().toISOString(),storage};const blob=new Blob([JSON.stringify(payload,null,2)],{type:"application/json"}),url=URL.createObjectURL(blob),a=document.createElement("a");a.href=url;a.download=`Anesthculator_Safety_Backup_${new Date().toISOString().slice(0,10)}.json`;a.click();URL.revokeObjectURL(url);mirrorCriticalData()};
+$("exportSafetyBtn").onclick=()=>{const keys=[];for(let i=0;i<localStorage.length;i++)keys.push(localStorage.key(i));const storage={};keys.filter(k=>k&&k.startsWith("anesth")).forEach(k=>{const v=localStorage.getItem(k);try{storage[k]=JSON.parse(v)}catch{storage[k]=v}});const payload={format:"AnesthculatorSafetyBackup",version:1,appVersion:"0.71.0",exportedAt:new Date().toISOString(),storage};const blob=new Blob([JSON.stringify(payload,null,2)],{type:"application/json"}),url=URL.createObjectURL(blob),a=document.createElement("a");a.href=url;a.download=`Anesthculator_Safety_Backup_${new Date().toISOString().slice(0,10)}.json`;a.click();URL.revokeObjectURL(url);mirrorCriticalData()};
 $("importSafetyBtn").onclick=()=>$("importSafetyFile").click();
 $("importSafetyFile").onchange=async e=>{const f=e.target.files?.[0];if(!f)return;try{const data=JSON.parse(await f.text());if(data.format!=="AnesthculatorSafetyBackup"||!data.storage)throw new Error("Unsupported backup format");Object.entries(data.storage).forEach(([k,v])=>localStorage.setItem(k,typeof v==="string"?v:JSON.stringify(v)));await mirrorCriticalData();appNotify("Safety backup imported. Reloading…");setTimeout(()=>location.reload(),700)}catch(err){appNotify("Import failed: "+err.message)}finally{e.target.value=""}};
 
@@ -1823,6 +1826,32 @@ function renderApproachEntries(q=""){
  if(q){let best=ranked[0];$("approachSearchWhy").innerHTML=best?`<span class="approachSearchResult">Best match: ${best.name}</span> · จัดอันดับจากคำ ความหมาย และความสัมพันธ์ทางคลินิก`:`ยังไม่พบความสัมพันธ์ที่ตรง`;}else $("approachSearchWhy").textContent="เลือกอาการด้านล่าง หรือพิมพ์สิ่งที่เกิดขึ้นกับผู้ป่วย";
 }
 function checkList(items){return `<div class="approachChecklist">${items.map(x=>`<label class="approachCheck"><input type="checkbox"><span>${x}</span></label>`).join("")}</div>`}
+
+let fastReasoningClues=new Set();
+let fastReasoningResponse="";
+function getFastReasoningResult(){
+  if(!window.AnesthReasoning)return null;
+  return window.AnesthReasoning.evaluate(window.AnesthReasoning.HYPOTENSION_MODEL,{clues:[...fastReasoningClues],response:fastReasoningResponse});
+}
+function fastReasoningHTML(){
+  const engine=window.AnesthReasoning;
+  if(!engine)return `<div class="reasoningError">Reasoning engine unavailable. Reload the application.</div>`;
+  const result=getFastReasoningResult();
+  const clueButtons=engine.HYPOTENSION_MODEL.clues.map(c=>`<button type="button" class="reasoningClue ${fastReasoningClues.has(c.id)?"selected":""}" data-reasoning-clue="${c.id}">${c.label}</button>`).join("");
+  const ranked=result.ranked.slice(0,4).map((d,i)=>`<div class="reasoningRank"><span>${i+1}</span><div><b>${d.label}</b><small>Priority score ${d.score.toFixed(1)} · confidence ${d.confidence}%</small></div></div>`).join("");
+  const actions=result.immediateActions.map(x=>`<li>${x}</li>`).join("");
+  const next=result.nextQuestion?`<button type="button" class="reasoningNext" data-reasoning-clue="${result.nextQuestion.id}"><small>NEXT BEST QUESTION</small><b>${result.nextQuestion.label}?</b></button>`:`<div class="reasoningNext"><b>Core clue set complete</b></div>`;
+  return `<section class="fastReasoning" aria-label="Hypotension Fast Mode">
+    <div class="fastReasoningHead"><div><span>v0.71 FOUNDATION</span><h4>Hypotension Fast Mode</h4><p>Tap only clues that are present. The differential updates continuously.</p></div><button type="button" data-reasoning-reset>Reset</button></div>
+    <div class="reasoningClues">${clueButtons}</div>
+    <div class="reasoningOutput">
+      <div><h5>Prioritized causes</h5>${ranked}</div>
+      <div><h5>Act now</h5><ol>${actions}</ol>${next}</div>
+    </div>
+    <div class="reasoningResponse"><b>Response after intervention</b><div><button data-reasoning-response="improved" class="${fastReasoningResponse==='improved'?'selected':''}">Improved</button><button data-reasoning-response="partial" class="${fastReasoningResponse==='partial'?'selected':''}">Partial</button><button data-reasoning-response="none" class="${fastReasoningResponse==='none'?'selected':''}">No response</button></div>${fastReasoningResponse?`<small>Response recorded. Re-observe and update the selected clues; ranking will be recalculated.</small>`:''}</div>
+  </section>`;
+}
+
 const mechanismData={
  vasodilation:{title:"Vasodilation / low SVR",checks:["ทบทวน depth และยาที่เพิ่งให้","พิจารณา neuraxial sympathetic block","มองหา anaphylaxis แม้ไม่มีผื่น","ทบทวน sepsis, reperfusion หรือ vasoplegia"],links:["Anaphylaxis"]},
  preload:{title:"Low preload / bleeding",checks:["ถามศัลยแพทย์และตรวจ surgical field","ทบทวน suction, swab และ concealed loss","ประเมิน position, pneumoperitoneum และ vena cava compression","พิจารณา fluid responsiveness และ blood products ตามบริบท"],links:["Hemorrhage / Massive transfusion"]},
@@ -1833,7 +1862,7 @@ const mechanismData={
 };
 function renderHypotension(){
  const panel=$("approachPanel");panel.innerHTML=`
- <div class="approachTitle"><div><h3>Hypotension</h3><p>เริ่มจากค่าที่พบจริง แยกความรุนแรง ประคองพร้อมค้นหากลไก และเชื่อมไป Crisis เมื่อสงสัย</p></div><span class="approachStatus">FULL PATHWAY v0.70</span></div>
+ <div class="approachTitle"><div><h3>Hypotension</h3><p>เริ่มจากค่าที่พบจริง แยกความรุนแรง ประคองพร้อมค้นหากลไก และเชื่อมไป Crisis เมื่อสงสัย</p></div><span class="approachStatus">REASONING FOUNDATION v0.71</span></div>${fastReasoningHTML()}
  <section class="approachSection"><header><span>1</span><b>Verify & assess severity</b></header><div class="approachSectionBody">${checkList(["วัด NIBP ซ้ำทันที หรือประเมิน waveform/zero/level ของ arterial line","คลำชีพจรและดู trend ไม่ใช้ค่าครั้งเดียวตัดสิน","ประเมิน perfusion, ECG, SpO₂, ETCO₂ และระดับความรู้สึกตัวตามบริบท","พิจารณาทั้งระดับ ระยะเวลา baseline และโรคร่วม ไม่ใช้ MAP ตัวเลขเดียวกับทุกคน"])}</div></section>
  <section class="approachSection"><header><span>2</span><b>Parallel action: stabilize + identify cause</b></header><div class="approachSectionBody"><div class="approachParallel"><div><h4>STABILIZE NOW</h4>${checkList(["แจ้งทีมและศัลยแพทย์เมื่อมีความไม่มั่นคง","หยุด stimulus/traction/insufflation ที่เกี่ยวข้องเมื่อเหมาะสม","ประเมิน airway, oxygenation และ ventilation","เลือก temporary vasoactive support ตาม physiology และ local protocol"])}</div><div><h4>FIND THE CAUSE NOW</h4>${checkList(["HR และ rhythm","ETCO₂ trend และ peak airway pressure","surgical field / blood loss","ยา เลือด หรือเหตุการณ์ใน 5–10 นาทีที่ผ่านมา","position, PEEP, pneumoperitoneum, tourniquet/unclamp"])}</div></div></div></section>
  <section class="approachSection"><header><span>3</span><b>Choose the predominant physiology</b></header><div class="approachSectionBody"><div class="approachDecisionGrid">${Object.entries(mechanismData).map(([k,v])=>`<button class="approachDecision ${selectedMechanism===k?"selected":""}" data-mechanism="${k}"><b>${v.title}</b><small>แตะเพื่อเปิด targeted checks</small></button>`).join("")}</div><div id="mechanismBranch"></div></div></section>
@@ -1854,4 +1883,4 @@ document.addEventListener("click",e=>{
 });
 initClinicalApproach();
 
-if("serviceWorker"in navigator)navigator.serviceWorker.register("./sw.js?v=0701",{updateViaCache:"none"});renderCatFilters();renderLibraryCompact();sync();
+if("serviceWorker"in navigator)navigator.serviceWorker.register("./sw.js?v=0710",{updateViaCache:"none"});renderCatFilters();renderLibraryCompact();sync();

@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://anesthculator.local/schemas/clinical-case.schema.json",
+  "title": "Anesthculator Clinical Case",
+  "type": "object",
+  "required": ["id", "createdAt", "patientProfile", "procedureContext", "clues", "timeline"],
+  "properties": {
+    "id": {"type": "string", "minLength": 1},
+    "createdAt": {"type": "string", "format": "date-time"},
+    "patientProfile": {"type": "object"},
+    "procedureContext": {"type": "object"},
+    "clues": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "category", "value", "confidence", "observedAt"],
+        "properties": {
+          "id": {"type": "string"},
+          "category": {"enum": ["hemodynamics","ecg","airway","ventilation","oxygenation","gas-analysis","skin","laboratory","ultrasound","equipment","monitoring-reliability","surgical"]},
+          "value": {},
+          "confidence": {"enum": ["low","medium","high"]},
+          "meaning": {"type": "string"},
+          "observedAt": {"type": "string", "format": "date-time"}
+        },
+        "additionalProperties": true
+      }
+    },
+    "timeline": {"type": "array"}
+  },
+  "additionalProperties": true
+}

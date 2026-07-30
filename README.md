@@ -1,3 +1,16 @@
+# Anesthculator v0.71.0
+
+## Clinical Reasoning Foundation — Sprint 1
+
+- Adds an executable weighted reasoning engine for the first Hypotension vertical slice.
+- Adds Fast Mode clue capture, ranked differential, immediate actions, next-best question and response-based re-evaluation.
+- Adds TypeScript domain contracts and JSON Schema without introducing a build step.
+- Preserves the existing Drug Calculator, Drug Library, Clinical Approach and Crisis modules.
+
+> Clinical decision-support prototype. Reasoning scores are prioritization aids, not diagnostic probabilities. Institutional review and simulation testing are required before clinical use.
+
+---
+
 # Anesthculator v0.70.1
 
 ## Clinical Approach Layer — Phase 1
