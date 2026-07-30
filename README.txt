@@ -1,18 +1,15 @@
-Anesthculator v0.32 — Local Verification Restored
+Anesthculator v0.27 — Visibility/Search fix
 
-Important finding:
-- Source cross-check is NOT complete for the entire Drug Library.
-- v0.23 Batch 1 source verification remains in the app for selected drugs/records.
-- Remaining entries stay VERIFY / THAI CROSS-CHECK PENDING / DOSE LOCKED as appropriate.
+Critical behavior fix:
+- Hide in Drug Library affects Drug Library display state ONLY.
+- It NEVER removes a drug from Plan.
+- Plan Hide/Unhide remains phase-specific and independent.
+- Existing old global-hidden values are ignored by Plan immediately.
 
-Local Verify:
-- Restored working Verify & Unlock handler lost during later UI refactors.
-- Verification is now tied to a specific dose record (drug + phase + indication/context), not automatically the whole generic drug.
-- Example: a hospital can locally verify Fentanyl Induction dose without automatically verifying its Post-op or Maintenance record.
-- Required: population, route, dose min/default/max, unit, stock concentration/unit, reference, edition/version/date, page/table/section.
-- Optional: target concentration, final volume, verification note.
-- LOCAL VERIFIED data is stored on the current browser/device.
-- Built-in reference records remain unchanged.
-- Local verification can be edited or removed.
+Drug Library:
+- Search searches the entire unified generic library even if a Category filter is currently selected.
+- Hidden drugs remain in search results and display HIDDEN.
+- Unified cards use generic-level Hide/Unhide: all duplicate underlying records are restored together.
+- Old partially-hidden duplicate records are detected as HIDDEN and can be restored with one tap.
 
-Existing old whole-drug Local Verified records remain backward-compatible.
+Clinical dose data and verification logic are unchanged from v0.26.

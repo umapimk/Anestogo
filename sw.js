@@ -1,53 +1,64 @@
-/* Anesthculator service worker — v0.63.3
- *
- * v0.60 and earlier used a network-first strategy. In an operating theatre
- * that is the worst case: a weak-but-alive WiFi signal makes every request
- * wait for a TCP timeout before falling back to cache, so the app feels
- * slower on bad WiFi than with no WiFi at all.
- *
- * v0.63.3 serves the app shell from cache immediately and refreshes it in the
- * background (stale-while-revalidate), so the crisis screens open instantly
- * regardless of connectivity. The cache name now carries the app version, so
- * a new release always evicts the previous shell.
+/* Anesthculator service worker — v0.70.1
+ * Cache-first app shell for fast offline opening, with background refresh.
+ * The release-specific cache name forces old v0.63.x shells to be removed.
  */
-const VERSION = 'v0633-r1';
-const CACHE = `anesthculator-v070'./', './index.html', './style.css', './app.js', './manifest.json', './cloud.js'];
+const VERSION = 'v0701-r1';
+const CACHE = `anesthculator-${VERSION}`;
+const SHELL = [
+  './',
+  './index.html',
+  './style.css?v=0701',
+  './app.js?v=0701',
+  './manifest.json?v=0701',
+  './cloud.js?v=0701'
+];
 
-self.addEventListener('install', e => {
+self.addEventListener('install', event => {
   self.skipWaiting();
-  e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL)));
+  event.waitUntil(caches.open(CACHE).then(cache => cache.addAll(SHELL)));
 });
 
-self.addEventListener('activate', e => {
-  e.waitUntil(
+self.addEventListener('activate', event => {
+  event.waitUntil(
     caches.keys()
-      .then(keys => Promise.all(keys.filter(k => k !== CACHE).map(k => caches.delete(k))))
+      .then(keys => Promise.all(keys.filter(key => key !== CACHE).map(key => caches.delete(key))))
       .then(() => self.clients.claim())
   );
 });
 
-self.addEventListener('fetch', e => {
-  const req = e.request;
-  if (req.method !== 'GET') return;
-  const url = new URL(req.url);
+self.addEventListener('fetch', event => {
+  const request = event.request;
+  if (request.method !== 'GET') return;
+  const url = new URL(request.url);
 
-  // Cloud/API traffic must never be served stale — it is shared library data.
-  // Try the network, and fall back to cache only if the device is offline.
   if (url.origin !== self.location.origin) {
-    e.respondWith(fetch(req).catch(() => caches.match(req)));
+    event.respondWith(fetch(request).catch(() => caches.match(request)));
     return;
   }
 
-  // App shell and same-origin assets: cache first, revalidate in background.
-  e.respondWith(
-    caches.match(req).then(cached => {
-      const network = fetch(req)
-        .then(res => {
-          if (res && res.status === 200 && res.type === 'basic') {
-            const copy = res.clone();
-            caches.open(CACHE).then(c => c.put(req, copy));
+  // Navigation uses network first so a deployed release becomes visible immediately.
+  if (request.mode === 'navigate') {
+    event.respondWith(
+      fetch(request)
+        .then(response => {
+          if (response && response.ok) {
+            caches.open(CACHE).then(cache => cache.put('./index.html', response.clone()));
           }
-          return res;
+          return response;
+        })
+        .catch(() => caches.match('./index.html').then(r => r || caches.match('./')))
+    );
+    return;
+  }
+
+  event.respondWith(
+    caches.match(request).then(cached => {
+      const network = fetch(request)
+        .then(response => {
+          if (response && response.status === 200 && response.type === 'basic') {
+            caches.open(CACHE).then(cache => cache.put(request, response.clone()));
+          }
+          return response;
         })
         .catch(() => cached);
       return cached || network;

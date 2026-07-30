@@ -1854,4 +1854,4 @@ document.addEventListener("click",e=>{
 });
 initClinicalApproach();
 
-if("serviceWorker"in navigator)navigator.serviceWorker.register("./sw.js");renderCatFilters();renderLibraryCompact();sync();
+if("serviceWorker"in navigator)navigator.serviceWorker.register("./sw.js?v=0701",{updateViaCache:"none"});renderCatFilters();renderLibraryCompact();sync();

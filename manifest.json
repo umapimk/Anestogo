@@ -1,11 +1,11 @@
 {
-  "name": "Anesthculator v0.70",
+  "name": "Anesthculator",
   "short_name": "Anesthculator",
-  "start_url": "./",
+  "start_url": "./?v=0701",
   "display": "standalone",
   "background_color": "#f5f8fc",
   "theme_color": "#f5f8fc",
-  "description": "Anesthesia dose, dilution and perioperative crisis decision-support prototype",
+  "description": "Anesthesia clinical decision support platform: Clinical Approach, Crisis Protocol, and Reference & Drug",
   "id": "./",
   "scope": "./"
 }
