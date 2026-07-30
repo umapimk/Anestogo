@@ -1604,7 +1604,7 @@ function crisis(){
 
 let crisisStartedAt=null,crisisTicker=null,crisisLog=[];
 let crisisStepState={},crisisRoles={},crisisTimers=[],crisisSnapshotCount=0;
-const CRISIS_STATE_KEY="anesthCrisisStateV063";
+const CRISIS_STATE_KEY="anesthCrisisStateV0632";
 function saveCrisisState(){
  const payload={version:1,cs,startedAt:crisisStartedAt?crisisStartedAt.getTime():null,log:crisisLog,steps:crisisStepState,roles:crisisRoles,timers:crisisTimers,snapshots:crisisSnapshotCount,savedAt:Date.now()};
  try{localStorage.setItem(CRISIS_STATE_KEY,JSON.stringify(payload));safetyDBPut("crisisState",payload)}catch(e){console.warn("Crisis state save failed",e)}
@@ -1616,17 +1616,6 @@ function restoreCrisisState(){
  }catch(e){console.warn("Crisis restore failed",e);return false}
 }
 const CRISIS_ROLES=["Team leader","Airway","Drugs","Circulation / CPR","Runner","Recorder"];
-const TIMER_PRESETS={
- default:[[120,"Reassess patient / rhythm"]],
- perls:[[120,"Rhythm check"],[240,"Epinephrine window"]],
- mh:[[600,"Reassess response / repeat dantrolene"],[900,"Reassess response / repeat dantrolene"]],
- last:[[180,"Reassess after lipid / circulation"],[900,"Confirm stability before stopping lipid"]],
- ana:[[120,"Reassess BP / airway / adrenaline response"]],
- brady:[[120,"Reassess rhythm and perfusion"]],
- hem:[[300,"Repeat ABG / ionized Ca / coagulation review"]],
- hyperk:[[300,"Repeat ECG / potassium / glucose"]],
- hypogly:[[900,"Repeat glucose"]]
-};
 function crisisClock(t){let sec=Math.max(0,Math.floor((t-(crisisStartedAt||t))/1000));return String(Math.floor(sec/60)).padStart(2,"0")+":"+String(sec%60).padStart(2,"0")}
 function crisisAddLog(label,meta={}){
  let now=new Date(),elapsed=crisisStartedAt?crisisClock(now):"--:--";
@@ -1665,7 +1654,9 @@ function updateCrisisChecklist(changedStep=null,state=null){
 }
 function cycleStep(el){
  let i=+el.dataset.step,title=el.querySelector(".stepTitleText")?.textContent||`Step ${i}`;
- let state=getStepState(i),next=state==="todo"?"progress":state==="progress"?"done":state==="done"?"todo":"todo";setStepState(i,next,title);
+ let state=getStepState(i);
+ // v0.63.2: one tap behaves as a checklist. Tap once to complete; tap again to reopen.
+ setStepState(i,state==="done"?"todo":"done",title);
 }
 function renderRoleBoard(){
  let board=$("crisisRoleBoard");if(!board)return;
@@ -1690,27 +1681,33 @@ function tickCrisis(){
  if(crisisStartedAt&&$("crisisElapsed"))$("crisisElapsed").textContent=crisisClock(new Date());
  let changed=false;crisisTimers.forEach(t=>{if(t.status==="running"&&Date.now()>=t.due){t.status="due";changed=true;crisisAddLog(`TIMER DUE: ${t.label}`,{kind:"timer_due"});}});renderTimers();
 }
-function timerPresetButtons(){return (TIMER_PRESETS[cs]||TIMER_PRESETS.default).map(x=>`<button type="button" data-add-timer="${x[0]}" data-timer-label="${x[1]}">⏱ ${x[1]} · ${timerText(x[0])}</button>`).join("")}
-function addSnapshot(status){
- if(!crisisStartedAt)startCrisis();crisisSnapshotCount++;
- let done=[...document.querySelectorAll("#cpanel .crisisStep.done")].length,total=document.querySelectorAll("#cpanel .crisisStep").length;
- crisisAddLog(`Reassessment #${crisisSnapshotCount}: ${status}; steps ${done}/${total} completed`,{kind:"snapshot"});
-}
 function contextTimersForStep(step){
  const map={
-   last:{2:[[180,"Lipid bolus — 3 minutes"],[1200,"Lipid infusion — 20 minutes"]],3:[[180,"Reassess circulation"]],5:[[900,"Continue lipid after stability"]]},
-   mh:{3:[[600,"Reassess / repeat dantrolene"]]},ana:{2:[[120,"Reassess BP / airway response"]]},
-   hyperk:{2:[[300,"Repeat ECG / K⁺ / glucose"]]},hypogly:{2:[[900,"Repeat glucose"]]},perls:{2:[[120,"Rhythm check"]]}
+   last:{2:[[180,"Lipid bolus — 3 minutes"],[1200,"Lipid infusion — 20 minutes"]]},
+   mh:{3:[[600,"Reassess response / repeat dantrolene"]]},
+   ana:{2:[[120,"Reassess BP / airway response"]]},
+   hyperk:{2:[[300,"Repeat ECG / K⁺ / glucose"]]},
+   hypogly:{2:[[900,"Repeat glucose"]]},
+   perls:{1:[[120,"Rhythm check"]]}
  };
  return map[cs]?.[step]||[];
+}
+function decisionForStep(step){
+ const map={
+   last:{2:{question:"หลังเริ่ม lipid แล้ว circulation เป็นอย่างไร?",yes:"Stable / improving → continue infusion and monitoring",no:"Persistent instability → proceed to Step 3: repeat bolus and increase infusion"}},
+   mh:{3:{question:"หลังให้ dantrolene แล้ว response เพียงพอหรือไม่?",yes:"Improving → continue monitoring and treat complications",no:"Inadequate response → reassess and repeat according to protocol"}},
+   ana:{2:{question:"หลังการรักษา BP และ airway ดีขึ้นหรือไม่?",yes:"Improving → continue observation and supportive care",no:"Not improving → continue escalation according to the anaphylaxis algorithm"}},
+   hyperk:{2:{question:"ECG / potassium / glucose ดีขึ้นหรือไม่?",yes:"Improving → continue monitoring",no:"Persistent abnormality → proceed to definitive potassium removal strategy"}},
+   hypogly:{2:{question:"Repeat glucose กลับสู่เป้าหมายหรือไม่?",yes:"Yes → monitor and identify the cause",no:"No → repeat treatment according to age and local protocol"}},
+   perls:{1:{question:"Rhythm check หลัง CPR cycle",yes:"Organized rhythm / pulse → enter post-arrest care",no:"No pulse → continue the appropriate arrest branch"}}
+ };
+ return map[cs]?.[step]||null;
 }
 function enhanceCrisisPanel(){
  let panel=$("cpanel");if(!panel)return;let card=panel.querySelector(".crisisCard");if(!card)return;
  card.insertAdjacentHTML("afterbegin",`<div class="crisisProgress"><b>Crisis checklist progress</b><div class="crisisProgressTrack"><div id="crisisProgressFill" class="crisisProgressFill"></div></div><strong id="crisisProgressCount">0 / 0</strong></div>`);
  let ops=document.createElement("section");ops.className="crisisOps";ops.innerHTML=`
-${cs==="perls"?`<details class="crisisModule"><summary>👥 CPR team roles <span>cardiac arrest only</span></summary><div id="crisisRoleBoard" class="crisisRoleBoard"></div></details>`:""}
- <details class="crisisModule timerModule"><summary>⏱ Additional timers <span>manual presets</span></summary><div class="timerPresetRow">${timerPresetButtons()}</div><div id="crisisTimerList" class="crisisTimerList"></div></details>
- <details class="crisisModule"><summary>🔄 Reassessment loop <span>record current trajectory</span></summary><div class="reassessGrid"><button type="button" data-snapshot="Improving">↑ Improving</button><button type="button" data-snapshot="Unchanged">→ Unchanged</button><button type="button" data-snapshot="Deteriorating">↓ Deteriorating</button><button type="button" data-snapshot="ROSC / stable">✓ ROSC / Stable</button></div></details>`;
+${cs==="perls"?`<details class="crisisModule"><summary>👥 CPR team roles <span>cardiac arrest only</span></summary><div id="crisisRoleBoard" class="crisisRoleBoard"></div></details>`:""}`;
  let dx=card.querySelector(".crisisDx");(dx||card.firstChild).before(ops);if(cs==="perls")renderRoleBoard();renderTimers();
  panel.querySelectorAll(".crisisStep").forEach((el,i)=>{let n=i+1;el.dataset.step=n;el.setAttribute("role","group");
    const nodes=[...el.childNodes], main=document.createElement("div");main.className="stepMain";
@@ -1719,6 +1716,12 @@ ${cs==="perls"?`<details class="crisisModule"><summary>👥 CPR team roles <span
      const wrap=document.createElement("div");wrap.className="stepContextTimers";
      wrap.innerHTML=timers.map(timer=>`<div class="stepContextTimer" data-timer-label="${timer[1]}" data-timer-seconds="${timer[0]}"><div class="stepContextTimerHead"><b>${timer[1]}</b><span class="stepContextTime">${timerText(timer[0])}</span></div><div class="stepContextTimerActions"><button type="button" data-add-timer="${timer[0]}" data-timer-label="${timer[1]}">▶ Start timer</button></div></div>`).join("");
      main.appendChild(wrap);
+   }
+   const decision=decisionForStep(n);
+   if(decision){
+     const node=document.createElement("div");node.className="stepDecisionNode";
+     node.innerHTML=`<div class="decisionQuestion">◆ ${decision.question}</div><div class="decisionBranches"><div class="decisionBranch positive">${decision.yes}</div><div class="decisionBranch negative">${decision.no}</div></div>`;
+     main.appendChild(node);
    }
    el.append(main);el.insertAdjacentHTML("beforeend",`<button type="button" class="stepNaButton" data-step-na="${n}" aria-label="Mark step not applicable">N/A</button>`);applyStepVisual(n)
  });
@@ -1737,12 +1740,10 @@ function resetCrisis(){
 function filterCrisis(q){q=(q||"").trim().toLowerCase();$("cbuttons").querySelectorAll("button").forEach((b,i)=>{let item=C[i],match=!q||(item[1]+" "+item[0]).toLowerCase().includes(q);b.hidden=!match});let visible=[...$("cbuttons").querySelectorAll("button")].filter(b=>!b.hidden);if(q&&!visible.length)$("cpanel").innerHTML='<div class="crisisNoResult">ไม่พบเหตุการณ์ที่ตรงกับคำค้น</div>';else if(q&&visible.length&&!visible.some(b=>b.classList.contains("sel"))){visible[0].click()}else if(!q)crisis()}
 
 document.addEventListener("click",e=>{
- let mark=e.target.closest("[data-mark]");if(mark){if(!crisisStartedAt)startCrisis();crisisAddLog(mark.dataset.mark);return}
  let claim=e.target.closest("[data-claim]");if(claim){let role=claim.dataset.claim,input=document.querySelector(`[data-role="${role}"]`),name=(input?.value||"").trim()||"Assigned";crisisRoles[role]=name;crisisAddLog(`${role} assigned: ${name}`,{kind:"role"});renderRoleBoard();return}
  let add=e.target.closest("[data-add-timer]");if(add){addCrisisTimer(+add.dataset.addTimer,add.dataset.timerLabel);return}
  let repeat=e.target.closest("[data-timer-repeat]");if(repeat){let t=crisisTimers.find(x=>String(x.id)===repeat.dataset.timerRepeat);if(t){t.due=Date.now()+t.seconds*1000;t.status="running";saveCrisisState();crisisAddLog(`Timer repeated: ${t.label}`);renderTimers()}return}
  let doneTimer=e.target.closest("[data-timer-done]");if(doneTimer){let t=crisisTimers.find(x=>String(x.id)===doneTimer.dataset.timerDone);if(t)crisisAddLog(`Timer acknowledged: ${t.label}`);crisisTimers=crisisTimers.filter(x=>String(x.id)!==doneTimer.dataset.timerDone);saveCrisisState();renderTimers();return}
- let snap=e.target.closest("[data-snapshot]");if(snap){addSnapshot(snap.dataset.snapshot);return}
  let na=e.target.closest("[data-step-na]");if(na){e.stopPropagation();let el=na.closest(".crisisStep"),i=+na.dataset.step,title=el.querySelector("b")?.textContent||`Step ${i}`;setStepState(i,getStepState(i)==="na"?"todo":"na",title);return}
  let openTimeline=e.target.closest("[data-open-timeline]");if(openTimeline){document.querySelector(".crisisLogPanel")?.setAttribute("open","");document.querySelector(".crisisLogPanel")?.scrollIntoView({behavior:"smooth",block:"center"});return}
  let step=e.target.closest("#cpanel .crisisStep");if(step&&!e.target.closest("button,input,select,a,textarea")){if(!crisisStartedAt)startCrisis();cycleStep(step)}

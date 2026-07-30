@@ -1,16 +1,16 @@
-/* Anesthculator service worker — v0.63.1
+/* Anesthculator service worker — v0.63.2
  *
  * v0.60 and earlier used a network-first strategy. In an operating theatre
  * that is the worst case: a weak-but-alive WiFi signal makes every request
  * wait for a TCP timeout before falling back to cache, so the app feels
  * slower on bad WiFi than with no WiFi at all.
  *
- * v0.63.1 serves the app shell from cache immediately and refreshes it in the
+ * v0.63.2 serves the app shell from cache immediately and refreshes it in the
  * background (stale-while-revalidate), so the crisis screens open instantly
  * regardless of connectivity. The cache name now carries the app version, so
  * a new release always evicts the previous shell.
  */
-const VERSION = 'v0631-r1';
+const VERSION = 'v0632-r1';
 const CACHE = `anesthculator-${VERSION}`;
 const SHELL = ['./', './index.html', './style.css', './app.js', './manifest.json', './cloud.js'];
 
