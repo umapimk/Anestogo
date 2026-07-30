@@ -1603,16 +1603,16 @@ function crisis(){
 }
 
 let crisisStartedAt=null,crisisTicker=null,crisisLog=[];
-let crisisStepState={},crisisRoles={},crisisTimers=[],crisisSnapshotCount=0;
-const CRISIS_STATE_KEY="anesthCrisisStateV0632";
+let crisisStepState={},crisisRoles={},crisisTimers=[],crisisDecisions={},crisisSnapshotCount=0;
+const CRISIS_STATE_KEY="anesthCrisisStateV0633";
 function saveCrisisState(){
- const payload={version:1,cs,startedAt:crisisStartedAt?crisisStartedAt.getTime():null,log:crisisLog,steps:crisisStepState,roles:crisisRoles,timers:crisisTimers,snapshots:crisisSnapshotCount,savedAt:Date.now()};
+ const payload={version:1,cs,startedAt:crisisStartedAt?crisisStartedAt.getTime():null,log:crisisLog,steps:crisisStepState,roles:crisisRoles,timers:crisisTimers,decisions:crisisDecisions,snapshots:crisisSnapshotCount,savedAt:Date.now()};
  try{localStorage.setItem(CRISIS_STATE_KEY,JSON.stringify(payload));safetyDBPut("crisisState",payload)}catch(e){console.warn("Crisis state save failed",e)}
 }
 function clearCrisisState(){try{localStorage.removeItem(CRISIS_STATE_KEY);safetyDBDelete("crisisState")}catch(e){}}
 function restoreCrisisState(){
  try{const raw=localStorage.getItem(CRISIS_STATE_KEY);if(!raw)return false;const x=JSON.parse(raw);if(!x||!x.startedAt)return false;
- cs=x.cs||cs;crisisStartedAt=new Date(x.startedAt);crisisLog=Array.isArray(x.log)?x.log:[];crisisStepState=x.steps||{};crisisRoles=x.roles||{};crisisTimers=Array.isArray(x.timers)?x.timers:[];crisisSnapshotCount=+x.snapshots||0;return true
+ cs=x.cs||cs;crisisStartedAt=new Date(x.startedAt);crisisLog=Array.isArray(x.log)?x.log:[];crisisStepState=x.steps||{};crisisRoles=x.roles||{};crisisTimers=Array.isArray(x.timers)?x.timers:[];crisisDecisions=x.decisions||{};crisisSnapshotCount=+x.snapshots||0;return true
  }catch(e){console.warn("Crisis restore failed",e);return false}
 }
 const CRISIS_ROLES=["Team leader","Airway","Drugs","Circulation / CPR","Runner","Recorder"];
@@ -1694,12 +1694,12 @@ function contextTimersForStep(step){
 }
 function decisionForStep(step){
  const map={
-   last:{2:{question:"หลังเริ่ม lipid แล้ว circulation เป็นอย่างไร?",yes:"Stable / improving → continue infusion and monitoring",no:"Persistent instability → proceed to Step 3: repeat bolus and increase infusion"}},
-   mh:{3:{question:"หลังให้ dantrolene แล้ว response เพียงพอหรือไม่?",yes:"Improving → continue monitoring and treat complications",no:"Inadequate response → reassess and repeat according to protocol"}},
-   ana:{2:{question:"หลังการรักษา BP และ airway ดีขึ้นหรือไม่?",yes:"Improving → continue observation and supportive care",no:"Not improving → continue escalation according to the anaphylaxis algorithm"}},
-   hyperk:{2:{question:"ECG / potassium / glucose ดีขึ้นหรือไม่?",yes:"Improving → continue monitoring",no:"Persistent abnormality → proceed to definitive potassium removal strategy"}},
-   hypogly:{2:{question:"Repeat glucose กลับสู่เป้าหมายหรือไม่?",yes:"Yes → monitor and identify the cause",no:"No → repeat treatment according to age and local protocol"}},
-   perls:{1:{question:"Rhythm check หลัง CPR cycle",yes:"Organized rhythm / pulse → enter post-arrest care",no:"No pulse → continue the appropriate arrest branch"}}
+   last:{2:{question:"หลังเริ่ม lipid แล้ว circulation เป็นอย่างไร?",yes:"Stable / improving",yesDetail:"Continue infusion and monitoring",yesTarget:4,no:"Persistent instability",noDetail:"Repeat bolus and increase infusion",noTarget:3}},
+   mh:{3:{question:"หลังให้ dantrolene แล้ว response เพียงพอหรือไม่?",yes:"Improving",yesDetail:"Continue monitoring and treat complications",yesTarget:5,no:"Inadequate response",noDetail:"Repeat dantrolene according to protocol",noTarget:4}},
+   ana:{2:{question:"หลังการรักษา BP และ airway ดีขึ้นหรือไม่?",yes:"Improving",yesDetail:"Continue observation and supportive care",yesTarget:3,no:"Not improving",noDetail:"Escalate treatment according to algorithm",noTarget:3}},
+   hyperk:{2:{question:"ECG / potassium / glucose ดีขึ้นหรือไม่?",yes:"Improving",yesDetail:"Continue monitoring",yesTarget:3,no:"Persistent abnormality",noDetail:"Proceed to definitive potassium removal",noTarget:3}},
+   hypogly:{2:{question:"Repeat glucose กลับสู่เป้าหมายหรือไม่?",yes:"Yes",yesDetail:"Monitor and identify the cause",yesTarget:3,no:"No",noDetail:"Repeat treatment according to local protocol",noTarget:2}},
+   perls:{1:{question:"Rhythm check หลัง CPR cycle",yes:"Organized rhythm / pulse",yesDetail:"Enter post-arrest care",yesTarget:5,no:"No pulse",noDetail:"Continue the appropriate arrest branch",noTarget:2}}
  };
  return map[cs]?.[step]||null;
 }
@@ -1720,7 +1720,9 @@ ${cs==="perls"?`<details class="crisisModule"><summary>👥 CPR team roles <span
    const decision=decisionForStep(n);
    if(decision){
      const node=document.createElement("div");node.className="stepDecisionNode";
-     node.innerHTML=`<div class="decisionQuestion">◆ ${decision.question}</div><div class="decisionBranches"><div class="decisionBranch positive">${decision.yes}</div><div class="decisionBranch negative">${decision.no}</div></div>`;
+     const selected=crisisDecisions[stepKey(n)]||"";
+     node.dataset.decisionStep=n;
+     node.innerHTML=`<div class="decisionQuestion">${decision.question}</div><div class="decisionBranches"><button type="button" class="decisionBranch positive ${selected==="yes"?"selected":""}" data-decision-choice="yes" data-decision-step="${n}" data-decision-target="${decision.yesTarget||n+1}"><b>${decision.yes}</b><small>${decision.yesDetail||""}</small></button><button type="button" class="decisionBranch negative ${selected==="no"?"selected":""}" data-decision-choice="no" data-decision-step="${n}" data-decision-target="${decision.noTarget||n+1}"><b>${decision.no}</b><small>${decision.noDetail||""}</small></button></div>`;
      main.appendChild(node);
    }
    el.append(main);el.insertAdjacentHTML("beforeend",`<button type="button" class="stepNaButton" data-step-na="${n}" aria-label="Mark step not applicable">N/A</button>`);applyStepVisual(n)
@@ -1734,12 +1736,13 @@ function startCrisis(){
  clearInterval(crisisTicker);crisisTicker=setInterval(tickCrisis,1000);tickCrisis();
 }
 function resetCrisis(){
- clearInterval(crisisTicker);crisisTicker=null;crisisStartedAt=null;crisisLog=[];crisisStepState={};crisisRoles={};crisisTimers=[];crisisSnapshotCount=0;clearCrisisState();
+ clearInterval(crisisTicker);crisisTicker=null;crisisStartedAt=null;crisisLog=[];crisisStepState={};crisisRoles={};crisisTimers=[];crisisDecisions={};crisisSnapshotCount=0;clearCrisisState();
  $("crisisRunBar").hidden=true;$("crisisElapsed").textContent="00:00";$("crisisStartBtn").textContent="▶ START CRISIS";renderCrisisLog();crisis();
 }
 function filterCrisis(q){q=(q||"").trim().toLowerCase();$("cbuttons").querySelectorAll("button").forEach((b,i)=>{let item=C[i],match=!q||(item[1]+" "+item[0]).toLowerCase().includes(q);b.hidden=!match});let visible=[...$("cbuttons").querySelectorAll("button")].filter(b=>!b.hidden);if(q&&!visible.length)$("cpanel").innerHTML='<div class="crisisNoResult">ไม่พบเหตุการณ์ที่ตรงกับคำค้น</div>';else if(q&&visible.length&&!visible.some(b=>b.classList.contains("sel"))){visible[0].click()}else if(!q)crisis()}
 
 document.addEventListener("click",e=>{
+ let decisionChoice=e.target.closest("[data-decision-choice]");if(decisionChoice){e.stopPropagation();if(!crisisStartedAt)startCrisis();let step=+decisionChoice.dataset.decisionStep,choice=decisionChoice.dataset.decisionChoice,target=+decisionChoice.dataset.decisionTarget;crisisDecisions[stepKey(step)]=choice;saveCrisisState();let decision=decisionForStep(step);crisisAddLog(`Reassessment: ${choice==="yes"?decision?.yes:decision?.no}`,{kind:"decision",step,choice});let node=decisionChoice.closest(".stepDecisionNode");node?.querySelectorAll(".decisionBranch").forEach(b=>b.classList.toggle("selected",b===decisionChoice));let current=document.querySelector(`#cpanel .crisisStep[data-step="${step}"]`);if(current&&getStepState(step)!=="done")setStepState(step,"done",current.querySelector(".stepTitleText")?.textContent||`Step ${step}`);requestAnimationFrame(()=>{let next=document.querySelector(`#cpanel .crisisStep[data-step="${target}"]`);next?.scrollIntoView({behavior:"smooth",block:"center"});next?.classList.add("decisionTargetFlash");setTimeout(()=>next?.classList.remove("decisionTargetFlash"),1400)});return}
  let claim=e.target.closest("[data-claim]");if(claim){let role=claim.dataset.claim,input=document.querySelector(`[data-role="${role}"]`),name=(input?.value||"").trim()||"Assigned";crisisRoles[role]=name;crisisAddLog(`${role} assigned: ${name}`,{kind:"role"});renderRoleBoard();return}
  let add=e.target.closest("[data-add-timer]");if(add){addCrisisTimer(+add.dataset.addTimer,add.dataset.timerLabel);return}
  let repeat=e.target.closest("[data-timer-repeat]");if(repeat){let t=crisisTimers.find(x=>String(x.id)===repeat.dataset.timerRepeat);if(t){t.due=Date.now()+t.seconds*1000;t.status="running";saveCrisisState();crisisAddLog(`Timer repeated: ${t.label}`);renderTimers()}return}
@@ -1760,7 +1763,7 @@ $("dFinal").addEventListener("change",()=>render());
 $("dDiluent").addEventListener("change",()=>render());
 
 $("addDrugBtn").onclick=()=>openLocalDrugEditor();
-$("exportSafetyBtn").onclick=()=>{const keys=[];for(let i=0;i<localStorage.length;i++)keys.push(localStorage.key(i));const storage={};keys.filter(k=>k&&k.startsWith("anesth")).forEach(k=>{const v=localStorage.getItem(k);try{storage[k]=JSON.parse(v)}catch{storage[k]=v}});const payload={format:"AnesthculatorSafetyBackup",version:1,appVersion:"0.63.1",exportedAt:new Date().toISOString(),storage};const blob=new Blob([JSON.stringify(payload,null,2)],{type:"application/json"}),url=URL.createObjectURL(blob),a=document.createElement("a");a.href=url;a.download=`Anesthculator_Safety_Backup_${new Date().toISOString().slice(0,10)}.json`;a.click();URL.revokeObjectURL(url);mirrorCriticalData()};
+$("exportSafetyBtn").onclick=()=>{const keys=[];for(let i=0;i<localStorage.length;i++)keys.push(localStorage.key(i));const storage={};keys.filter(k=>k&&k.startsWith("anesth")).forEach(k=>{const v=localStorage.getItem(k);try{storage[k]=JSON.parse(v)}catch{storage[k]=v}});const payload={format:"AnesthculatorSafetyBackup",version:1,appVersion:"0.70",exportedAt:new Date().toISOString(),storage};const blob=new Blob([JSON.stringify(payload,null,2)],{type:"application/json"}),url=URL.createObjectURL(blob),a=document.createElement("a");a.href=url;a.download=`Anesthculator_Safety_Backup_${new Date().toISOString().slice(0,10)}.json`;a.click();URL.revokeObjectURL(url);mirrorCriticalData()};
 $("importSafetyBtn").onclick=()=>$("importSafetyFile").click();
 $("importSafetyFile").onchange=async e=>{const f=e.target.files?.[0];if(!f)return;try{const data=JSON.parse(await f.text());if(data.format!=="AnesthculatorSafetyBackup"||!data.storage)throw new Error("Unsupported backup format");Object.entries(data.storage).forEach(([k,v])=>localStorage.setItem(k,typeof v==="string"?v:JSON.stringify(v)));await mirrorCriticalData();appNotify("Safety backup imported. Reloading…");setTimeout(()=>location.reload(),700)}catch(err){appNotify("Import failed: "+err.message)}finally{e.target.value=""}};
 
@@ -1790,5 +1793,65 @@ $("importDrugsFile").onchange=async e=>{
  }catch(err){alert("Import failed: "+err.message)}
  e.target.value="";
 };
+
+
+
+// v0.70 Clinical Approach Layer -------------------------------------------------
+const CLINICAL_APPROACHES=[
+ {id:"cardiac-arrest",name:"Cardiac arrest",urgency:"critical",terms:["cardiac arrest","arrest","no pulse","pulseless","หัวใจหยุดเต้น","คลำชีพจรไม่ได้","pea","vf","vt"]},
+ {id:"hypoxemia",name:"Hypoxemia",urgency:"critical",terms:["hypoxemia","hypoxia","desaturation","spo2 drop","oxygen low","ออกซิเจนต่ำ","เขียว","cyanosis"]},
+ {id:"high-airway-pressure",name:"High airway pressure",urgency:"critical",terms:["high airway pressure","peak pressure","stiff bag","difficult ventilation","บีบ bag ยาก","แรงดันทางเดินหายใจสูง","wheeze","bronchospasm","cannot ventilate"]},
+ {id:"hypotension",name:"Hypotension",urgency:"critical",terms:["hypotension","low bp","map low","bp drop","shock","collapse","ความดันตก","ความดันต่ำ","map 65","sbp drop","cefazolin","antibiotic","bleeding","spinal","etco2 drop"]},
+ {id:"bradycardia",name:"Bradycardia",urgency:"high",terms:["bradycardia","slow heart rate","hr low","ชีพจรช้า","หัวใจเต้นช้า","vagal","high spinal"]},
+ {id:"tachy-arrhythmia",name:"Tachycardia / Arrhythmia",urgency:"high",terms:["tachycardia","arrhythmia","af","svt","vt","heart rate fast","หัวใจเต้นเร็ว","หัวใจเต้นผิดจังหวะ"]},
+ {id:"hyperthermia",name:"Hyperthermia",urgency:"high",terms:["hyperthermia","temperature high","fever intraoperative","ร้อน","ไข้สูง","jaw rigidity","masseter spasm","co2 rising","mh","malignant hyperthermia"]},
+ {id:"seizure-last",name:"Seizure / LAST",urgency:"high",terms:["seizure","convulsion","ชัก","last","local anesthetic toxicity","bupivacaine","wide qrs","tinnitus","metallic taste"]},
+ {id:"rash-angioedema",name:"Rash / Angioedema",urgency:"high",terms:["rash","urticaria","angioedema","ผื่น","บวม","หน้า บวม","allergy","anaphylaxis"]},
+ {id:"delayed-emergence",name:"Delayed emergence",urgency:"moderate",terms:["delayed emergence","not waking","ตื่นช้า","ไม่ตื่น","prolonged sedation","residual blockade"]},
+ {id:"severe-hypertension",name:"Severe Hypertension",urgency:"moderate",terms:["severe hypertension","high bp","hypertensive crisis","ความดันสูง","bp high"]},
+ {id:"emergence-agitation",name:"Emergence Agitation",urgency:"moderate",terms:["emergence agitation","agitated","ดิ้น","กระสับกระส่าย","delirium","restless after anesthesia"]}
+];
+const APPROACH_RELATIONS={
+ "cefazolin":["hypotension","rash-angioedema","high-airway-pressure"],"antibiotic":["hypotension","rash-angioedema","high-airway-pressure"],"stiff bag":["high-airway-pressure","hypoxemia","hypotension"],"etco2 drop":["hypotension","hypoxemia","cardiac-arrest"],"bupivacaine":["seizure-last","tachy-arrhythmia","cardiac-arrest"],"spinal":["hypotension","bradycardia","high-airway-pressure"],"cement":["hypotension","hypoxemia","cardiac-arrest"],"laparoscopy":["hypotension","high-airway-pressure","hypoxemia"],"tื่นช้า":["delayed-emergence"],"ผื่น":["rash-angioedema","hypotension","high-airway-pressure"]
+};
+let selectedApproachId="hypotension",selectedMechanism="";
+function normalizeClinicalText(s){return (s||"").toLowerCase().normalize("NFKD").replace(/[^a-z0-9ก-๙₂%/. ]+/g," ").replace(/\s+/g," ").trim()}
+function clinicalScore(item,q){if(!q)return 1;let s=0,n=normalizeClinicalText(q);if(normalizeClinicalText(item.name).includes(n))s+=100;for(const t of item.terms){let nt=normalizeClinicalText(t);if(n.includes(nt)||nt.includes(n))s+=35;for(const w of n.split(" "))if(w.length>2&&nt.includes(w))s+=4}for(const [k,ids] of Object.entries(APPROACH_RELATIONS))if(n.includes(normalizeClinicalText(k))&&ids.includes(item.id))s+=50-ids.indexOf(item.id)*7;return s}
+function renderApproachEntries(q=""){
+ const host=$("approachEntries");if(!host)return;const ranked=CLINICAL_APPROACHES.map((x,i)=>({...x,score:clinicalScore(x,q),order:i})).filter(x=>!q||x.score>0).sort((a,b)=>q?b.score-a.score:a.order-b.order);
+ host.innerHTML=ranked.map(x=>`<button class="approachEntry ${x.id===selectedApproachId?"selected":""}" data-approach-id="${x.id}"><span class="entryNum">${x.order+1}</span><b>${x.name}</b><span class="entryUrgency urgency-${x.urgency}">${x.urgency==="critical"?"วิกฤตสูง":x.urgency==="high"?"วิกฤตสูง–ปานกลาง":"ปานกลาง"}</span></button>`).join("")||`<div class="approachNoResult">ไม่พบหัวข้อที่ตรง ลองพิมพ์อาการ เหตุการณ์ ยา หรือ monitor change ด้วยคำอื่น</div>`;
+ if(q){let best=ranked[0];$("approachSearchWhy").innerHTML=best?`<span class="approachSearchResult">Best match: ${best.name}</span> · จัดอันดับจากคำ ความหมาย และความสัมพันธ์ทางคลินิก`:`ยังไม่พบความสัมพันธ์ที่ตรง`;}else $("approachSearchWhy").textContent="เลือกอาการด้านล่าง หรือพิมพ์สิ่งที่เกิดขึ้นกับผู้ป่วย";
+}
+function checkList(items){return `<div class="approachChecklist">${items.map(x=>`<label class="approachCheck"><input type="checkbox"><span>${x}</span></label>`).join("")}</div>`}
+const mechanismData={
+ vasodilation:{title:"Vasodilation / low SVR",checks:["ทบทวน depth และยาที่เพิ่งให้","พิจารณา neuraxial sympathetic block","มองหา anaphylaxis แม้ไม่มีผื่น","ทบทวน sepsis, reperfusion หรือ vasoplegia"],links:["Anaphylaxis"]},
+ preload:{title:"Low preload / bleeding",checks:["ถามศัลยแพทย์และตรวจ surgical field","ทบทวน suction, swab และ concealed loss","ประเมิน position, pneumoperitoneum และ vena cava compression","พิจารณา fluid responsiveness และ blood products ตามบริบท"],links:["Hemorrhage / Massive transfusion"]},
+ pump:{title:"Pump failure",checks:["ตรวจ ECG และ rhythm","มองหา ischemia หรือ new ventricular dysfunction","ใช้ FOCUS/echo เมื่อพร้อมและไม่ทำให้การกู้ชีพล่าช้า","พิจารณา inotropy ตาม physiology"],links:["Cardiac arrest"]},
+ obstruction:{title:"Obstructive physiology",checks:["ดู ETCO₂ trend, SpO₂ และ airway pressure","พิจารณา tension pneumothorax, PE, air/CO₂ embolism, tamponade","ตรวจบริบท laparoscopy, line manipulation และ sitting position","ใช้ FOCUS/echo และแก้ reversible cause อย่างเร่งด่วน"],links:["Cardiac arrest","Hypoxemia"]},
+ rhythm:{title:"Rate / rhythm",checks:["ยืนยัน rhythm และ pulse","ค้นหา vagal stimulus, high spinal, hypoxemia หรือยา","แยก bradycardia กับ unstable tachyarrhythmia","เชื่อมไป clinical approach เฉพาะ rhythm"],links:["Bradycardia","Tachycardia / Arrhythmia"]},
+ unclear:{title:"Unclear / mixed physiology",checks:["ทำ simultaneous stabilization และ focused re-check","ตรวจ IV delivery, drug preparation และ measurement error","ทบทวนเหตุการณ์ 5–10 นาทีที่ผ่านมา","พิจารณาหลายกลไกร่วมกันและขอ senior help"],links:[]}
+};
+function renderHypotension(){
+ const panel=$("approachPanel");panel.innerHTML=`
+ <div class="approachTitle"><div><h3>Hypotension</h3><p>เริ่มจากค่าที่พบจริง แยกความรุนแรง ประคองพร้อมค้นหากลไก และเชื่อมไป Crisis เมื่อสงสัย</p></div><span class="approachStatus">FULL PATHWAY v0.70</span></div>
+ <section class="approachSection"><header><span>1</span><b>Verify & assess severity</b></header><div class="approachSectionBody">${checkList(["วัด NIBP ซ้ำทันที หรือประเมิน waveform/zero/level ของ arterial line","คลำชีพจรและดู trend ไม่ใช้ค่าครั้งเดียวตัดสิน","ประเมิน perfusion, ECG, SpO₂, ETCO₂ และระดับความรู้สึกตัวตามบริบท","พิจารณาทั้งระดับ ระยะเวลา baseline และโรคร่วม ไม่ใช้ MAP ตัวเลขเดียวกับทุกคน"])}</div></section>
+ <section class="approachSection"><header><span>2</span><b>Parallel action: stabilize + identify cause</b></header><div class="approachSectionBody"><div class="approachParallel"><div><h4>STABILIZE NOW</h4>${checkList(["แจ้งทีมและศัลยแพทย์เมื่อมีความไม่มั่นคง","หยุด stimulus/traction/insufflation ที่เกี่ยวข้องเมื่อเหมาะสม","ประเมิน airway, oxygenation และ ventilation","เลือก temporary vasoactive support ตาม physiology และ local protocol"])}</div><div><h4>FIND THE CAUSE NOW</h4>${checkList(["HR และ rhythm","ETCO₂ trend และ peak airway pressure","surgical field / blood loss","ยา เลือด หรือเหตุการณ์ใน 5–10 นาทีที่ผ่านมา","position, PEEP, pneumoperitoneum, tourniquet/unclamp"])}</div></div></div></section>
+ <section class="approachSection"><header><span>3</span><b>Choose the predominant physiology</b></header><div class="approachSectionBody"><div class="approachDecisionGrid">${Object.entries(mechanismData).map(([k,v])=>`<button class="approachDecision ${selectedMechanism===k?"selected":""}" data-mechanism="${k}"><b>${v.title}</b><small>แตะเพื่อเปิด targeted checks</small></button>`).join("")}</div><div id="mechanismBranch"></div></div></section>
+ <section class="approachSection"><header><span>4</span><b>Pitfalls</b></header><div class="approachSectionBody"><div class="approachPitfall"><b>ผิวหนังปกติไม่ตัด perioperative anaphylaxis</b><br>ผื่นอาจถูกผ้าคลุมบัง หรือปรากฏหลังแก้ hypotension แล้ว</div><div class="approachPitfall"><b>ไม่ตอบสนองต่อ pressor ไม่ได้แปลว่าต้องเพิ่มยาอย่างเดียว</b><br>ตรวจ IV delivery, measurement และทบทวน hemorrhage, obstruction, pump failure, anaphylaxis, high spinal หรือ LAST</div><div class="approachPitfall"><b>HR อย่างเดียวไม่เพียงพอสำหรับเลือก vasopressor</b><br>ต้องพิจารณา preload, SVR, contractility และ rhythm ร่วมกัน</div></div></section>
+ <section class="approachSection"><header><span>5</span><b>Reassessment decision</b></header><div class="approachSectionBody"><p>ประเมิน BP/MAP trend, pulse/rhythm, ETCO₂, SpO₂, airway pressure, blood loss และ perfusion หลัง intervention</p><div class="approachReassess"><button data-reassess="improved">✓ Meaningful improvement</button><button data-reassess="partial">◐ Partial response</button><button data-reassess="none">! No response</button></div><div id="reassessResult"></div></div></section>
+ <section class="approachSection"><header><span>↗</span><b>Related Crisis Protocols</b></header><div class="approachSectionBody"><p>เปิดเมื่อภาพทางคลินิกเข้าได้หรือสงสัยสูง โดย Clinical Approach ยังคงเป็นเมนูแยกจาก Crisis</p><div class="approachLinks"><button class="approachLink" data-open-crisis="Anaphylaxis">Open Anaphylaxis</button><button class="approachLink" data-open-crisis="LAST">Open LAST</button><button class="approachLink" data-open-crisis="Perioperative Cardiac Arrest">Open Cardiac Arrest</button></div></div></section>`;
+ renderMechanismBranch();
+}
+function renderMechanismBranch(){let host=$("mechanismBranch");if(!host||!selectedMechanism)return;let d=mechanismData[selectedMechanism];host.innerHTML=`<div class="approachBranch"><h4>${d.title}</h4><ul>${d.checks.map(x=>`<li>${x}</li>`).join("")}</ul>${d.links.length?`<div class="approachLinks">${d.links.map(x=>`<button class="approachLink" data-open-related="${x}">Related: ${x}</button>`).join("")}</div>`:""}</div>`}
+function renderApproachPanel(){if(selectedApproachId==="hypotension")return renderHypotension();let item=CLINICAL_APPROACHES.find(x=>x.id===selectedApproachId);$("approachPanel").innerHTML=`<div class="approachTitle"><div><h3>${item?.name||"Clinical Approach"}</h3><p>Clinical pathway scaffold</p></div><span class="approachStatus">STRUCTURE READY</span></div><div class="approachPlaceholder"><div><b>${item?.name}</b><span>โครงสร้าง Entry → Immediate assessment → Differential → Investigations → Pitfalls → Decision → Reassessment → Crisis link พร้อมแล้ว<br>เนื้อหาฉบับเต็มจะเติมและตรวจหลักฐานทีละ pathway โดยเริ่มจาก Hypotension</span></div></div>`}
+function initClinicalApproach(){renderApproachEntries();renderApproachPanel();$("approachSearch").addEventListener("input",e=>{renderApproachEntries(normalizeClinicalText(e.target.value));let ranked=CLINICAL_APPROACHES.map(x=>({...x,score:clinicalScore(x,e.target.value)})).sort((a,b)=>b.score-a.score);if(e.target.value.trim()&&ranked[0]?.score>0){selectedApproachId=ranked[0].id;renderApproachPanel();renderApproachEntries(e.target.value)}});$("approachClear").onclick=()=>{$("approachSearch").value="";renderApproachEntries();};}
+document.addEventListener("click",e=>{
+ let entry=e.target.closest("[data-approach-id]");if(entry){selectedApproachId=entry.dataset.approachId;selectedMechanism="";renderApproachEntries($("approachSearch")?.value||"");renderApproachPanel();document.getElementById("approachPanel")?.scrollIntoView({behavior:"smooth",block:"start"});return}
+ let mech=e.target.closest("[data-mechanism]");if(mech){selectedMechanism=mech.dataset.mechanism;document.querySelectorAll("[data-mechanism]").forEach(x=>x.classList.toggle("selected",x===mech));renderMechanismBranch();document.getElementById("mechanismBranch")?.scrollIntoView({behavior:"smooth",block:"center"});return}
+ let reassess=e.target.closest("[data-reassess]");if(reassess){let map={improved:"ตอบสนองดี → ดำเนิน targeted management ต่อ ติดตาม trend และค้นหาสาเหตุให้ครบ",partial:"ตอบสนองบางส่วน → พิจารณา mixed physiology ทบทวน intervention และ reassess ซ้ำ",none:"ไม่ตอบสนอง → ตรวจ delivery/measurement และทบทวน diagnosis; มองหา hemorrhage, obstruction, pump failure หรือ crisis ที่พลาด"};$("reassessResult").innerHTML=`<div class="approachBranch"><b>${map[reassess.dataset.reassess]}</b></div>`;return}
+ let crisis=e.target.closest("[data-open-crisis]");if(crisis){showAppTab("crisis",true);let q=crisis.dataset.openCrisis;$("crisisSearch").value=q;filterCrisis(q);return}
+ let related=e.target.closest("[data-open-related]");if(related){let label=related.dataset.openRelated;if(label==="Bradycardia")selectedApproachId="bradycardia";else if(label.startsWith("Tachy"))selectedApproachId="tachy-arrhythmia";else if(label==="Hypoxemia")selectedApproachId="hypoxemia";else if(label==="Cardiac arrest")selectedApproachId="cardiac-arrest";renderApproachEntries();renderApproachPanel();document.getElementById("approachPanel")?.scrollIntoView({behavior:"smooth",block:"start"});return}
+});
+initClinicalApproach();
 
 if("serviceWorker"in navigator)navigator.serviceWorker.register("./sw.js");renderCatFilters();renderLibraryCompact();sync();

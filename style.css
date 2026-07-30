@@ -886,3 +886,45 @@ html[data-dark="1"] .archiveDrugBtn,html[data-dark="1"] .restoreDrugBtn{backgrou
 .decisionBranch.negative{border-left:3px solid #e35b64}
 .crisisModule.timerModule,.reassessGrid{display:none!important}
 @media(max-width:650px){.stepContextTimer{grid-template-columns:1fr!important}.stepContextTimerActions button{width:100%}.decisionBranches{grid-template-columns:1fr}.crisisStep{padding-right:45px!important}}
+
+/* v0.63.3 sticky crisis clock + actionable reassessment branches */
+#crisis{padding-bottom:88px}
+.crisisRunBar{
+  position:fixed!important;
+  left:max(10px,env(safe-area-inset-left));
+  right:max(10px,env(safe-area-inset-right));
+  bottom:max(10px,env(safe-area-inset-bottom));
+  top:auto!important;
+  z-index:1000;
+  min-height:54px;
+  margin:0!important;
+  padding:8px 14px!important;
+  border:1px solid color-mix(in srgb,var(--danger) 55%,var(--line));
+  border-radius:16px;
+  background:color-mix(in srgb,var(--card) 94%,var(--danger) 6%);
+  box-shadow:0 10px 32px rgba(15,23,42,.2);
+  backdrop-filter:blur(14px);
+}
+.crisisRunBar>div:first-child{width:100%;display:grid!important;grid-template-columns:auto 1fr auto;align-items:center;gap:10px}
+.crisisRunBar b{font-size:27px!important;font-variant-numeric:tabular-nums;letter-spacing:.5px}
+.crisisRunBar small{justify-self:end;text-align:right;font-size:11px}
+.stepDecisionNode{margin-top:14px;padding:12px;border:1px solid var(--line);border-radius:14px;background:var(--soft)}
+.decisionQuestion{font-weight:900;font-size:15px;margin-bottom:10px;color:var(--text)}
+.decisionBranches{display:grid;grid-template-columns:1fr 1fr;gap:9px}
+.decisionBranch{display:flex!important;flex-direction:column;align-items:flex-start;text-align:left;min-height:68px;padding:11px 12px!important;border:1.5px solid var(--line)!important;border-radius:12px!important;background:var(--card)!important;color:var(--text)!important;white-space:normal}
+.decisionBranch b{font-size:14px;margin-bottom:3px}.decisionBranch small{font-size:11px;color:var(--muted);line-height:1.35}
+.decisionBranch.positive{border-left:5px solid #2aa66f!important}.decisionBranch.negative{border-left:5px solid #d96a3a!important}
+.decisionBranch.selected{box-shadow:0 0 0 3px color-mix(in srgb,#2f80ed 23%,transparent);border-color:#2f80ed!important}
+.decisionTargetFlash{animation:decisionTargetFlash 1.35s ease}
+@keyframes decisionTargetFlash{0%,100%{box-shadow:none}35%{box-shadow:0 0 0 5px color-mix(in srgb,#f39a18 28%,transparent)}}
+@media(max-width:650px){
+ #crisis{padding-bottom:84px}
+ .crisisRunBar{left:7px;right:7px;bottom:max(7px,env(safe-area-inset-bottom));border-radius:14px}
+ .crisisRunBar b{font-size:25px!important}
+ .crisisRunBar small{max-width:110px}
+ .decisionBranches{grid-template-columns:1fr}
+}
+
+/* v0.70 Clinical Approach */
+.approachHero{display:flex;justify-content:space-between;gap:18px;align-items:flex-start;margin:8px 0 14px}.approachHero h2{margin:4px 0 6px;font-size:clamp(24px,5vw,36px)}.approachHero p{margin:0;color:var(--muted);max-width:760px}.approachModeBadge{background:#eef5ff;color:#174f91;border:1px solid #cfe0f6;border-radius:999px;padding:9px 13px;font-weight:800;white-space:nowrap}.approachSearchCard{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:14px;margin-bottom:14px;box-shadow:0 8px 25px rgba(34,56,85,.06)}.approachSearchCard label{display:flex;justify-content:space-between;gap:10px;align-items:baseline}.approachSearchCard label small{color:var(--muted);font-weight:500}.approachSearchRow{display:flex;gap:8px;margin-top:10px}.approachSearchRow input{flex:1;min-width:0;font-size:16px;padding:13px 14px;border:1px solid var(--line);border-radius:13px;background:var(--bg);color:var(--text)}.approachSearchRow button{width:46px}.approachSearchWhy{margin-top:9px;color:var(--muted);font-size:13px}.approachLayout{display:grid;grid-template-columns:minmax(230px,300px) minmax(0,1fr);gap:15px}.approachLayout aside,.approachPanel{background:var(--card);border:1px solid var(--line);border-radius:18px}.approachLayout aside{padding:10px;height:max-content;position:sticky;top:84px}.approachListHead{display:flex;justify-content:space-between;padding:6px 7px 10px}.approachListHead small{color:var(--muted)}.approachEntries{display:grid;gap:6px}.approachEntry{display:grid;grid-template-columns:28px 1fr auto;gap:8px;align-items:center;text-align:left;padding:11px 10px;border-radius:12px;border:1px solid transparent;background:transparent;color:var(--text)}.approachEntry:hover,.approachEntry.selected{background:#eef5ff;border-color:#cfe0f6}.approachEntry .entryNum{color:var(--muted);font-weight:800}.approachEntry .entryUrgency{font-size:11px;font-weight:800;border-radius:999px;padding:4px 7px}.urgency-critical{background:#ffe7e8;color:#a11720}.urgency-high{background:#fff0de;color:#9b5300}.urgency-moderate{background:#fff7c9;color:#7b6500}.approachEntry.hidden{display:none}.approachPanel{padding:15px;min-height:620px}.approachTitle{display:flex;justify-content:space-between;gap:10px;align-items:flex-start;border-bottom:1px solid var(--line);padding-bottom:12px}.approachTitle h3{font-size:25px;margin:0 0 4px}.approachTitle p{margin:0;color:var(--muted)}.approachStatus{font-size:12px;background:#edf8f2;color:#17663f;border-radius:999px;padding:6px 9px;font-weight:800}.approachSection{margin-top:14px;border:1px solid var(--line);border-radius:15px;overflow:hidden}.approachSection>header{position:static;background:transparent;border:0;padding:12px 14px;display:flex;align-items:center;gap:9px}.approachSection>header b{font-size:17px}.approachSectionBody{padding:0 14px 14px}.approachChecklist{display:grid;gap:7px}.approachCheck{display:grid;grid-template-columns:24px 1fr;gap:8px;align-items:start;border:1px solid var(--line);border-radius:11px;padding:10px;background:var(--bg)}.approachCheck input{width:20px;height:20px}.approachParallel{display:grid;grid-template-columns:1fr 1fr;gap:10px}.approachParallel>div{border:1px solid var(--line);border-radius:13px;padding:12px}.approachParallel h4{margin:0 0 8px}.approachDecisionGrid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}.approachDecision{padding:12px;border:1px solid var(--line);border-radius:13px;text-align:left;background:var(--bg);color:var(--text)}.approachDecision b,.approachDecision small{display:block}.approachDecision small{color:var(--muted);margin-top:4px}.approachDecision.selected{border-color:#3d7fc4;background:#eef5ff}.approachBranch{margin-top:10px;border-left:4px solid #3d7fc4;padding:12px;background:#f6f9fd;border-radius:0 12px 12px 0}.approachBranch h4{margin:0 0 7px}.approachBranch ul{margin:6px 0 0;padding-left:20px}.approachLinks{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}.approachLink{border-radius:999px;padding:9px 12px;border:1px solid #dfb4b7;background:#fff5f5;color:#9b1d27;font-weight:800}.approachPitfall{border-left:5px solid #d68b00;background:#fff8e7;padding:11px 12px;border-radius:0 11px 11px 0;margin:7px 0}.approachReassess{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}.approachReassess button{padding:12px;border-radius:12px}.approachPlaceholder{display:grid;place-items:center;min-height:480px;text-align:center;color:var(--muted)}.approachPlaceholder b{display:block;color:var(--text);font-size:22px;margin-bottom:7px}.approachSearchResult{font-weight:800;color:#174f91}.approachNoResult{padding:14px;color:#9b1d27;background:#fff3f3;border-radius:12px}
+@media(max-width:760px){.approachHero{display:block}.approachModeBadge{display:inline-block;margin-top:10px}.approachSearchCard label{display:block}.approachSearchCard label small{display:block;margin-top:4px}.approachLayout{display:block}.approachLayout aside{position:static;margin-bottom:12px}.approachEntries{grid-template-columns:1fr 1fr}.approachEntry{grid-template-columns:22px 1fr}.approachEntry .entryUrgency{grid-column:2;font-size:10px;justify-self:start}.approachParallel,.approachDecisionGrid,.approachReassess{grid-template-columns:1fr}.approachPanel{padding:11px}.approachTitle h3{font-size:22px}}

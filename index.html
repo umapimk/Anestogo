@@ -4,13 +4,13 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#f5f8fc">
-<title>Anesthculator v0.63.2</title>
+<title>Anesthculator v0.63.3</title>
 <link rel="manifest" href="./manifest.json">
 <link rel="stylesheet" href="./style.css">
 </head>
 <body>
 <header>
-  <div class="headerLeft"><button id="appBackBtn" class="appBackBtn" type="button" aria-label="Back" title="Back">← <span>Back</span></button><div class="brand"><span class="drop">💧</span><div><b>Anesthculator <small>v0.63.2</small></b><em>Calm OR • Thailand Edition</em></div></div></div>
+  <div class="headerLeft"><button id="appBackBtn" class="appBackBtn" type="button" aria-label="Back" title="Back">← <span>Back</span></button><div class="brand"><span class="drop">💧</span><div><b>Anesthculator <small>v0.63.3</small></b><em>Calm OR • Thailand Edition</em></div></div></div>
   <button id="theme">☾</button>
 </header>
 
@@ -20,6 +20,7 @@
 <nav>
 <button class="on" data-tab="patient">👤 Patient</button>
 <button data-tab="plan">✨ Plan</button>
+<button data-tab="approach">🧭 Clinical Approach</button>
 <button data-tab="crisis">🚨 Crisis</button>
 <button data-tab="library">💊 Library</button>
 <button data-tab="refs">📚 References</button>
@@ -95,6 +96,26 @@
 </div><div class="timeline">① Induction　② Intubation/NMB　③ Maintenance　④ Reversal　⑤ PONV　⑥ Post-op</div>
   <p class="note">ยาที่อยู่ในกลุ่มเดียวกันเป็นทางเลือกเพื่อเปรียบเทียบ ไม่ได้หมายความว่าต้องให้พร้อมกันทั้งหมด</p>
   <div id="plans"></div>
+</section>
+
+
+<section id="approach" class="tab">
+  <div class="approachHero">
+    <div><span class="eyebrow">CLINICAL REASONING MODE</span><h2>🧭 Clinical Approach</h2><p>เริ่มจากสิ่งที่เห็นจริง ประเมินสาเหตุ แล้วเชื่อมไป Crisis Protocol เมื่อสงสัยภาวะจำเพาะ</p></div>
+    <div class="approachModeBadge">What is happening?</div>
+  </div>
+  <div class="approachSearchCard">
+    <label for="approachSearch"><b>Semantic clinical search</b><small>ค้นจากอาการ ความหมาย คำเกี่ยวข้อง เหตุการณ์ ยา monitor หรือบริบทการผ่าตัด</small></label>
+    <div class="approachSearchRow"><input id="approachSearch" type="search" placeholder="เช่น BP 60/30 หลัง cefazolin, stiff bag, ETCO₂ ลด, ตื่นช้า"><button id="approachClear" type="button">✕</button></div>
+    <div id="approachSearchWhy" class="approachSearchWhy">เลือกอาการด้านล่าง หรือพิมพ์สิ่งที่เกิดขึ้นกับผู้ป่วย</div>
+  </div>
+  <div class="approachLayout">
+    <aside>
+      <div class="approachListHead"><b>Entry symptoms</b><small>12 clinical presentations</small></div>
+      <div id="approachEntries" class="approachEntries"></div>
+    </aside>
+    <article id="approachPanel" class="approachPanel"></article>
+  </div>
 </section>
 
 <section id="crisis" class="tab">
