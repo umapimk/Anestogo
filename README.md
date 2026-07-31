@@ -1,3 +1,18 @@
+# Anesthculator v0.72.0 — Senior Mentor Action–Response
+
+Built directly on v0.71.0 Clinical Reasoning Foundation.
+
+## New in v0.72
+- One-question-at-a-time Senior Mentor flow inside Clinical Approach → Hypotension
+- Rhythm branching and AF sub-pathway
+- Action → mandatory response assessment → re-ranking
+- Editable answers and automatic timeline
+- All original v0.71 modules retained
+
+> Prototype only. Not clinically validated. Do not use as a substitute for clinician judgement or local protocols.
+
+---
+
 # Anesthculator v0.71.0
 
 ## Clinical Reasoning Foundation — Sprint 1

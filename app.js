@@ -1742,14 +1742,6 @@ function resetCrisis(){
 function filterCrisis(q){q=(q||"").trim().toLowerCase();$("cbuttons").querySelectorAll("button").forEach((b,i)=>{let item=C[i],match=!q||(item[1]+" "+item[0]).toLowerCase().includes(q);b.hidden=!match});let visible=[...$("cbuttons").querySelectorAll("button")].filter(b=>!b.hidden);if(q&&!visible.length)$("cpanel").innerHTML='<div class="crisisNoResult">ไม่พบเหตุการณ์ที่ตรงกับคำค้น</div>';else if(q&&visible.length&&!visible.some(b=>b.classList.contains("sel"))){visible[0].click()}else if(!q)crisis()}
 
 document.addEventListener("click",e=>{
- let ma=e.target.closest("[data-mentor-action]");if(ma){let id=ma.dataset.mentorAction;mentorState.actions[id]=!mentorState.actions[id];mentorLog(`${MENTOR_INITIAL_ACTIONS.find(x=>x.id===id)?.label||id}: ${mentorState.actions[id]?'done':'reopened'}`);mentorRerender();return}
- let ans=e.target.closest("[data-mentor-answer]");if(ans){mentorSetAnswer(ans.dataset.mentorAnswer,ans.dataset.value);return}
- let edit=e.target.closest("[data-mentor-edit]");if(edit){let q=MENTOR_QUESTIONS.find(x=>x.id===edit.dataset.mentorEdit);if(!q)return;let current=mentorState.answers[q.id];let next=q.opts[(q.opts.indexOf(current)+1)%q.opts.length];mentorState.answers[q.id]=next;mentorState.intervention=null;mentorState.response=null;mentorLog(`${q.label}: edited ${current} → ${next}`);mentorRerender();return}
- let mi=e.target.closest("[data-mentor-intervention]");if(mi){mentorState.intervention={id:mi.dataset.mentorIntervention,title:mi.dataset.title,detail:mi.dataset.detail,given:false};mentorState.response=null;mentorLog(`Intervention selected: ${mi.dataset.title}`);mentorRerender();return}
- let mg=e.target.closest("[data-mentor-given]");if(mg&&mentorState.intervention){mentorState.intervention.given=true;mentorLog(`Intervention given: ${mentorState.intervention.title}`);mentorRerender();return}
- let mr=e.target.closest("[data-mentor-response]");if(mr){mentorState.response=mr.dataset.mentorResponse;mentorLog(`Response: ${mr.textContent.trim()}`);mentorRerender();return}
- let nc=e.target.closest("[data-mentor-newcycle]");if(nc){mentorState.cycle++;mentorState.intervention=null;mentorState.response=null;mentorLog(`Reasoning cycle ${mentorState.cycle} started`);mentorRerender();return}
- let resetMentor=e.target.closest("[data-mentor-reset]");if(resetMentor){mentorState={answers:{},actions:{},intervention:null,response:null,timeline:[],cycle:1};mentorRerender();return}
  let clue=e.target.closest("[data-reasoning-clue]");if(clue){let id=clue.dataset.reasoningClue;if(fastReasoningClues.has(id))fastReasoningClues.delete(id);else fastReasoningClues.add(id);renderHypotension();document.querySelector(".fastReasoning")?.scrollIntoView({behavior:"smooth",block:"start"});return}
  let rr=e.target.closest("[data-reasoning-response]");if(rr){fastReasoningResponse=rr.dataset.reasoningResponse;renderHypotension();return}
  let resetReasoning=e.target.closest("[data-reasoning-reset]");if(resetReasoning){fastReasoningClues.clear();fastReasoningResponse="";renderHypotension();return}
@@ -1835,85 +1827,30 @@ function renderApproachEntries(q=""){
 }
 function checkList(items){return `<div class="approachChecklist">${items.map(x=>`<label class="approachCheck"><input type="checkbox"><span>${x}</span></label>`).join("")}</div>`}
 
-let mentorState={
- answers:{},actions:{},intervention:null,response:null,timeline:[],cycle:1
-};
-const MENTOR_CAUSES={
- vasodilation:{label:"Vasodilation / anesthetic effect",base:46},
- hemorrhage:{label:"Hemorrhage / hypovolemia",base:36},
- arrhythmia:{label:"Pump failure / arrhythmia",base:20},
- obstruction:{label:"Obstructive physiology",base:15},
- anaphylaxis:{label:"Anaphylaxis",base:14}
-};
-const MENTOR_QUESTIONS=[
- {id:"bleeding",label:"Active bleeding",prompt:"มองที่ surgical field ก่อนครับ มี active bleeding หรือ volume loss ที่สำคัญหรือไม่?",opts:["yes","no","unknown"],w:{yes:{hemorrhage:50,vasodilation:-8},no:{hemorrhage:-22,vasodilation:8},unknown:{}}},
- {id:"rash",label:"Rash / angioedema",prompt:"มองที่ผู้ป่วยครับ มีผื่น flushing angioedema หรือ bronchospasm ที่เกิดขึ้นฉับพลันหรือไม่?",opts:["yes","no","unknown"],w:{yes:{anaphylaxis:58},no:{anaphylaxis:-20},unknown:{}}},
- {id:"airway",label:"Peak airway pressure",prompt:"ดูเครื่องช่วยหายใจครับ Peak airway pressure สูงขึ้นอย่างฉับพลันหรือไม่?",opts:["yes","no","unknown"],w:{yes:{anaphylaxis:18,obstruction:20},no:{anaphylaxis:-4,obstruction:-8},unknown:{}}},
- {id:"rhythmChange",label:"Rhythm / HR change",prompt:"ดู monitor ครับ มี rhythm หรือ heart rate เปลี่ยนอย่างมีนัยสำคัญหรือไม่?",opts:["yes","no","unknown"],w:{yes:{arrhythmia:35},no:{arrhythmia:-12},unknown:{}}},
- {id:"rhythmType",label:"Rhythm type",prompt:"ตอนนี้ rhythm เป็นแบบไหน?",show:s=>s.answers.rhythmChange==="yes",opts:["AF","sinus tachycardia","SVT regular","VT/VF","uncertain"],w:{AF:{arrhythmia:30},"sinus tachycardia":{hemorrhage:6,vasodilation:6},"SVT regular":{arrhythmia:34},"VT/VF":{arrhythmia:55},uncertain:{}}},
- {id:"afOnset",label:"AF onset",prompt:"AF นี้เป็น new onset หรือเป็น AF เดิม?",show:s=>s.answers.rhythmType==="AF",opts:["new onset","pre-existing","unknown"],w:{"new onset":{arrhythmia:8},"pre-existing":{arrhythmia:2},unknown:{}}},
- {id:"afStability",label:"Hemodynamic stability",prompt:"คิดว่า AF เป็นเหตุให้ผู้ป่วย unstable อยู่ตอนนี้หรือไม่?",show:s=>s.answers.rhythmType==="AF",opts:["unstable","stable","uncertain"],w:{unstable:{arrhythmia:20},stable:{arrhythmia:-4},uncertain:{}}},
- {id:"afRate",label:"Ventricular rate",prompt:"Ventricular rate โดยประมาณอยู่ช่วงไหน?",show:s=>s.answers.rhythmType==="AF",opts:["<110","110–150",">150","uncertain"],w:{"<110":{arrhythmia:-4},"110–150":{arrhythmia:8},">150":{arrhythmia:18},uncertain:{}}},
- {id:"etco2",label:"ETCO₂ fall",prompt:"ETCO₂ ลดลงฉับพลันโดยไม่มีคำอธิบายจาก ventilation หรือไม่?",opts:["yes","no","unknown"],w:{yes:{obstruction:34,arrhythmia:10},no:{obstruction:-12},unknown:{}}}
-];
-const MENTOR_INITIAL_ACTIONS=[
- {id:"help",label:"Call for help"},{id:"verify",label:"Verify BP / waveform"},{id:"oxygen",label:"Optimize oxygenation / ventilation"},{id:"depth",label:"Review anesthetic depth"}
-];
-function mentorVisibleQuestions(){return MENTOR_QUESTIONS.filter(q=>!q.show||q.show(mentorState));}
-function mentorNextQuestion(){return mentorVisibleQuestions().find(q=>!mentorState.answers[q.id]);}
-function mentorScores(){
- const s={};Object.entries(MENTOR_CAUSES).forEach(([k,v])=>s[k]=v.base);
- MENTOR_QUESTIONS.forEach(q=>{const a=mentorState.answers[q.id];if(!a)return;const w=q.w[a]||{};Object.entries(w).forEach(([k,v])=>s[k]+=v)});
- if(mentorState.response==="map_hr_improved")s.arrhythmia+=12;
- if(mentorState.response==="hr_down_map_low"){s.arrhythmia-=18;s.vasodilation+=20;s.hemorrhage+=10;}
- if(mentorState.response==="map_improved_hr_same"){s.vasodilation+=8;s.arrhythmia-=4;}
- if(mentorState.response==="no_change"){s.arrhythmia-=5;s.vasodilation+=9;s.hemorrhage+=8;}
- if(mentorState.response==="worse"){s.obstruction+=10;s.hemorrhage+=10;s.arrhythmia+=6;}
- Object.keys(s).forEach(k=>s[k]=Math.max(1,Math.min(99,s[k])));return s;
-}
-function mentorLog(text){mentorState.timeline.unshift({time:new Date().toLocaleTimeString('th-TH',{hour:'2-digit',minute:'2-digit',second:'2-digit'}),text});}
-function mentorPriority(){
- if(mentorState.response==="hr_down_map_low")return ["Reassess volume status and vasodilation","HR ลดลงแล้ว แต่ MAP ยังต่ำ — AF อาจเป็นเพียง contributor ไม่ใช่สาเหตุหลัก"];
- if(mentorState.response==="map_hr_improved")return ["Continue monitoring after meaningful response","ประเมิน recurrence และแก้ reversible trigger ต่อ"];
- const [top]=Object.entries(mentorScores()).sort((a,b)=>b[1]-a[1])[0];
- const map={arrhythmia:["Clarify rhythm and hemodynamic impact","อย่าหยุดที่คำว่า arrhythmia — ระบุ rhythm, stability และ rate ก่อนเลือก pathway"],hemorrhage:["Control bleeding and restore circulation","ประเมิน source control และ volume loss พร้อม resuscitation"],vasodilation:["Support circulation and reduce reversible vasodilation","ทบทวน anesthetic depth ยาที่เพิ่งให้ และ response ต่อ support"],obstruction:["Exclude obstructive physiology now","ทบทวน ETCO₂, airway pressure และ procedure-related causes"],anaphylaxis:["Treat suspected perioperative anaphylaxis","เปิด crisis pathway และทำตาม local protocol โดยไม่รอ skin signs"]};
- return map[top]||["Treat hypotension now","Stabilize first and reassess continuously"];
-}
-function mentorAFReady(){return mentorState.answers.rhythmType==="AF" && mentorState.answers.afStability && mentorState.answers.afRate;}
-function mentorActionsForAF(){
- const st=mentorState.answers.afStability,rate=mentorState.answers.afRate;
- const a=[];
- if(st==="unstable")a.push({id:"af-cardioversion",title:"Unstable AF pathway",detail:"Prioritize resuscitation and synchronized cardioversion according to local perioperative/ACLS protocol."});
- else {
-  a.push({id:"af-triggers",title:"Treat reversible triggers",detail:"Review hypovolemia, hypoxia, pain, electrolytes and anesthetic depth."});
-  if(rate==="110–150"||rate===">150")a.push({id:"af-rate",title:"Rate-control pathway",detail:"Select agent and dose using patient factors and local protocol."});
- }
- a.push({id:"af-support",title:"Continue hemodynamic support",detail:"Do not delay hypotension treatment while clarifying the rhythm."});
- return a;
+let fastReasoningClues=new Set();
+let fastReasoningResponse="";
+function getFastReasoningResult(){
+  if(!window.AnesthReasoning)return null;
+  return window.AnesthReasoning.evaluate(window.AnesthReasoning.HYPOTENSION_MODEL,{clues:[...fastReasoningClues],response:fastReasoningResponse});
 }
 function fastReasoningHTML(){
- const [pt,pp]=mentorPriority(); const q=mentorNextQuestion(); const scores=mentorScores();
- const actions=MENTOR_INITIAL_ACTIONS.map(a=>`<button type="button" class="mentorAction ${mentorState.actions[a.id]?'done':''}" data-mentor-action="${a.id}">${mentorState.actions[a.id]?'✓ ':''}${a.label}</button>`).join('');
- const question=q?`<div class="mentorPrompt"><small>NEXT BEST QUESTION</small><b>${q.prompt}</b></div><div class="mentorOptions">${q.opts.map(v=>`<button type="button" data-mentor-answer="${q.id}" data-value="${v}">${v}</button>`).join('')}</div>`:`<div class="mentorPrompt"><b>Core question set complete</b><span>แก้คำตอบด้านล่างได้ทุกเมื่อ หรือทำ intervention เพื่อเข้าสู่ response loop</span></div>`;
- const ranked=Object.entries(scores).sort((a,b)=>b[1]-a[1]).map(([id,v],i)=>`<div class="mentorCause"><div><span>${i+1}</span><b>${MENTOR_CAUSES[id].label}</b><em>${v}</em></div><i><u style="width:${v}%"></u></i></div>`).join('');
- const answers=MENTOR_QUESTIONS.filter(x=>mentorState.answers[x.id]).map(x=>`<button type="button" class="mentorAnswer" data-mentor-edit="${x.id}"><span>${x.label}</span><b>${mentorState.answers[x.id]} ›</b></button>`).join('')||`<div class="mentorEmpty">ยังไม่มีคำตอบ</div>`;
- const af=mentorAFReady()?`<div class="mentorSubhead"><span>LINKED ALGORITHM</span><b>Perioperative AF</b></div><div class="mentorAFSummary">${mentorState.answers.afOnset||'onset not assessed'} • ${mentorState.answers.afStability} • rate ${mentorState.answers.afRate}</div><div class="mentorStack">${mentorActionsForAF().map(a=>`<button type="button" class="mentorAlgo" data-mentor-intervention="${a.id}" data-title="${a.title}" data-detail="${a.detail}"><b>${a.title}</b><small>${a.detail}</small></button>`).join('')}</div>`:'';
- const intervention=mentorState.intervention?`<div class="mentorIntervention"><small>ACTION TO TEST / TREAT</small><b>${mentorState.intervention.title}</b><span>${mentorState.intervention.detail}</span><button type="button" data-mentor-given>${mentorState.intervention.given?'Given — assess response':'Mark as given'}</button></div>`:'';
- const response=mentorState.intervention?.given&&!mentorState.response?`<div class="mentorResponse"><small>RESPONSE ASSESSMENT</small><b>หลัง intervention ผู้ป่วยตอบสนองอย่างไร?</b>${[["map_hr_improved","MAP และ HR ดีขึ้น"],["hr_down_map_low","HR ลดลง แต่ MAP ยังต่ำ"],["map_improved_hr_same","MAP ดีขึ้น แต่ HR ไม่เปลี่ยน"],["no_change","ไม่เปลี่ยนอย่างมีนัยสำคัญ"],["worse","แย่ลง / instability เพิ่ม"]].map(([v,l])=>`<button type="button" data-mentor-response="${v}">${l}</button>`).join('')}</div>`:'';
- const responseDone=mentorState.response?`<div class="mentorResponseDone"><b>Response recorded</b><span>${mentorState.response.replaceAll('_',' ')}</span><button type="button" data-mentor-newcycle>Start next reasoning cycle</button></div>`:'';
- const timeline=mentorState.timeline.slice(0,8).map(x=>`<div><time>${x.time}</time><span>${x.text}</span></div>`).join('')||`<div class="mentorEmpty">Timeline จะบันทึกอัตโนมัติ</div>`;
- return `<section class="fastReasoning mentorMode" aria-label="Hypotension Senior Mentor Mode">
-  <div class="fastReasoningHead"><div><span>v0.72 SENIOR MENTOR</span><h4>Hypotension Fast Mode</h4><p>Treat → Ask → Act → Observe response → Re-interpret</p></div><button type="button" data-mentor-reset>Reset</button></div>
-  <div class="mentorPriority"><small>CURRENT PRIORITY</small><b>${pt}</b><span>${pp}</span></div>
-  <div class="mentorBlock"><div class="mentorBlockTitle">DO NOW</div><div class="mentorActionGrid">${actions}</div></div>
-  <div class="mentorBlock">${question}</div>
-  ${af}<div class="mentorBlock">${intervention}${response}${responseDone}</div>
-  <div class="mentorColumns"><div><div class="mentorBlockTitle">WORKING DIAGNOSIS • LIVE</div>${ranked}</div><div><div class="mentorBlockTitle">ANSWERED / EDITABLE</div><div class="mentorStack">${answers}</div></div></div>
-  <div class="mentorTimeline"><div class="mentorBlockTitle">INTELLIGENT TIMELINE</div>${timeline}</div>
- </section>`;
+  const engine=window.AnesthReasoning;
+  if(!engine)return `<div class="reasoningError">Reasoning engine unavailable. Reload the application.</div>`;
+  const result=getFastReasoningResult();
+  const clueButtons=engine.HYPOTENSION_MODEL.clues.map(c=>`<button type="button" class="reasoningClue ${fastReasoningClues.has(c.id)?"selected":""}" data-reasoning-clue="${c.id}">${c.label}</button>`).join("");
+  const ranked=result.ranked.slice(0,4).map((d,i)=>`<div class="reasoningRank"><span>${i+1}</span><div><b>${d.label}</b><small>Priority score ${d.score.toFixed(1)} · confidence ${d.confidence}%</small></div></div>`).join("");
+  const actions=result.immediateActions.map(x=>`<li>${x}</li>`).join("");
+  const next=result.nextQuestion?`<button type="button" class="reasoningNext" data-reasoning-clue="${result.nextQuestion.id}"><small>NEXT BEST QUESTION</small><b>${result.nextQuestion.label}?</b></button>`:`<div class="reasoningNext"><b>Core clue set complete</b></div>`;
+  return `<section class="fastReasoning" aria-label="Hypotension Fast Mode">
+    <div class="fastReasoningHead"><div><span>v0.71 FOUNDATION</span><h4>Hypotension Fast Mode</h4><p>Tap only clues that are present. The differential updates continuously.</p></div><button type="button" data-reasoning-reset>Reset</button></div>
+    <div class="reasoningClues">${clueButtons}</div>
+    <div class="reasoningOutput">
+      <div><h5>Prioritized causes</h5>${ranked}</div>
+      <div><h5>Act now</h5><ol>${actions}</ol>${next}</div>
+    </div>
+    <div class="reasoningResponse"><b>Response after intervention</b><div><button data-reasoning-response="improved" class="${fastReasoningResponse==='improved'?'selected':''}">Improved</button><button data-reasoning-response="partial" class="${fastReasoningResponse==='partial'?'selected':''}">Partial</button><button data-reasoning-response="none" class="${fastReasoningResponse==='none'?'selected':''}">No response</button></div>${fastReasoningResponse?`<small>Response recorded. Re-observe and update the selected clues; ranking will be recalculated.</small>`:''}</div>
+  </section>`;
 }
-function mentorRerender(){renderHypotension();}
-function mentorSetAnswer(id,value){mentorState.answers[id]=value;mentorState.intervention=null;mentorState.response=null;mentorLog(`${MENTOR_QUESTIONS.find(q=>q.id===id)?.label||id}: ${value}`);mentorRerender();}
 
 const mechanismData={
  vasodilation:{title:"Vasodilation / low SVR",checks:["ทบทวน depth และยาที่เพิ่งให้","พิจารณา neuraxial sympathetic block","มองหา anaphylaxis แม้ไม่มีผื่น","ทบทวน sepsis, reperfusion หรือ vasoplegia"],links:["Anaphylaxis"]},
@@ -1925,7 +1862,7 @@ const mechanismData={
 };
 function renderHypotension(){
  const panel=$("approachPanel");panel.innerHTML=`
- <div class="approachTitle"><div><h3>Hypotension</h3><p>เริ่มจากค่าที่พบจริง แยกความรุนแรง ประคองพร้อมค้นหากลไก และเชื่อมไป Crisis เมื่อสงสัย</p></div><span class="approachStatus">SENIOR MENTOR v0.72</span></div>${fastReasoningHTML()}
+ <div class="approachTitle"><div><h3>Hypotension</h3><p>เริ่มจากค่าที่พบจริง แยกความรุนแรง ประคองพร้อมค้นหากลไก และเชื่อมไป Crisis เมื่อสงสัย</p></div><span class="approachStatus">REASONING FOUNDATION v0.71</span></div>${fastReasoningHTML()}
  <section class="approachSection"><header><span>1</span><b>Verify & assess severity</b></header><div class="approachSectionBody">${checkList(["วัด NIBP ซ้ำทันที หรือประเมิน waveform/zero/level ของ arterial line","คลำชีพจรและดู trend ไม่ใช้ค่าครั้งเดียวตัดสิน","ประเมิน perfusion, ECG, SpO₂, ETCO₂ และระดับความรู้สึกตัวตามบริบท","พิจารณาทั้งระดับ ระยะเวลา baseline และโรคร่วม ไม่ใช้ MAP ตัวเลขเดียวกับทุกคน"])}</div></section>
  <section class="approachSection"><header><span>2</span><b>Parallel action: stabilize + identify cause</b></header><div class="approachSectionBody"><div class="approachParallel"><div><h4>STABILIZE NOW</h4>${checkList(["แจ้งทีมและศัลยแพทย์เมื่อมีความไม่มั่นคง","หยุด stimulus/traction/insufflation ที่เกี่ยวข้องเมื่อเหมาะสม","ประเมิน airway, oxygenation และ ventilation","เลือก temporary vasoactive support ตาม physiology และ local protocol"])}</div><div><h4>FIND THE CAUSE NOW</h4>${checkList(["HR และ rhythm","ETCO₂ trend และ peak airway pressure","surgical field / blood loss","ยา เลือด หรือเหตุการณ์ใน 5–10 นาทีที่ผ่านมา","position, PEEP, pneumoperitoneum, tourniquet/unclamp"])}</div></div></div></section>
  <section class="approachSection"><header><span>3</span><b>Choose the predominant physiology</b></header><div class="approachSectionBody"><div class="approachDecisionGrid">${Object.entries(mechanismData).map(([k,v])=>`<button class="approachDecision ${selectedMechanism===k?"selected":""}" data-mechanism="${k}"><b>${v.title}</b><small>แตะเพื่อเปิด targeted checks</small></button>`).join("")}</div><div id="mechanismBranch"></div></div></section>
@@ -1946,4 +1883,4 @@ document.addEventListener("click",e=>{
 });
 initClinicalApproach();
 
-if("serviceWorker"in navigator)navigator.serviceWorker.register("./sw.js?v=0720",{updateViaCache:"none"});renderCatFilters();renderLibraryCompact();sync();
+if("serviceWorker"in navigator)navigator.serviceWorker.register("./sw.js?v=0710",{updateViaCache:"none"});renderCatFilters();renderLibraryCompact();sync();
