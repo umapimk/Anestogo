@@ -1,0 +1,9 @@
+{
+  "id": "perioperative-af-prototype",
+  "version": "0.73.0",
+  "warning": "Prototype only; use local perioperative/ACLS protocol.",
+  "branches": {
+    "unstable": ["synchronized-cardioversion-pathway", "hemodynamic-support", "reversible-causes"],
+    "stable": ["reversible-causes", "rate-control-if-indicated", "hemodynamic-support"]
+  }
+}
