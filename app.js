@@ -1823,34 +1823,325 @@ function clinicalScore(item,q){if(!q)return 1;let s=0,n=normalizeClinicalText(q)
 function renderApproachEntries(q=""){
  const host=$("approachEntries");if(!host)return;const ranked=CLINICAL_APPROACHES.map((x,i)=>({...x,score:clinicalScore(x,q),order:i})).filter(x=>!q||x.score>0).sort((a,b)=>q?b.score-a.score:a.order-b.order);
  host.innerHTML=ranked.map(x=>`<button class="approachEntry ${x.id===selectedApproachId?"selected":""}" data-approach-id="${x.id}"><span class="entryNum">${x.order+1}</span><b>${x.name}</b><span class="entryUrgency urgency-${x.urgency}">${x.urgency==="critical"?"วิกฤตสูง":x.urgency==="high"?"วิกฤตสูง–ปานกลาง":"ปานกลาง"}</span></button>`).join("")||`<div class="approachNoResult">ไม่พบหัวข้อที่ตรง ลองพิมพ์อาการ เหตุการณ์ ยา หรือ monitor change ด้วยคำอื่น</div>`;
- if(q){let best=ranked[0];$("approachSearchWhy").innerHTML=best?`<span class="approachSearchResult">Best match: ${best.name}</span> · จัดอันดับจากคำ ความหมาย และความสัมพันธ์ทางคลินิก`:`ยังไม่พบความสัมพันธ์ที่ตรง`;}else $("approachSearchWhy").textContent="เลือกอาการด้านล่าง หรือพิมพ์สิ่งที่เกิดขึ้นกับผู้ป่วย";
 }
 function checkList(items){return `<div class="approachChecklist">${items.map(x=>`<label class="approachCheck"><input type="checkbox"><span>${x}</span></label>`).join("")}</div>`}
 
-let fastReasoningClues=new Set();
-let fastReasoningResponse="";
-function getFastReasoningResult(){
-  if(!window.AnesthReasoning)return null;
-  return window.AnesthReasoning.evaluate(window.AnesthReasoning.HYPOTENSION_MODEL,{clues:[...fastReasoningClues],response:fastReasoningResponse});
+/* ===== v0.72 Senior Mentor Mode — Hypotension vertical slice =====
+   Layout is fixed by spec:
+     1 Mentor Bar · 2 Current Priority · 3 Immediate Actions
+     4 Next Best Question · 5 Leading Causes (working hypothesis)
+     6 Next Action · 7 Response Assessment
+     8 Continuous Reassessment · 9 Timeline
+   All reasoning lives in the engines; this block only renders. */
+
+let fastCase = { presentation: 'hypotension', answers: {}, implied: {}, actions: {}, interventions: [], timeline: [] };
+
+function fastLog(type, text) {
+  fastCase.timeline.unshift({
+    t: new Date().toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+    type, text
+  });
 }
-function fastReasoningHTML(){
-  const engine=window.AnesthReasoning;
-  if(!engine)return `<div class="reasoningError">Reasoning engine unavailable. Reload the application.</div>`;
-  const result=getFastReasoningResult();
-  const clueButtons=engine.HYPOTENSION_MODEL.clues.map(c=>`<button type="button" class="reasoningClue ${fastReasoningClues.has(c.id)?"selected":""}" data-reasoning-clue="${c.id}">${c.label}</button>`).join("");
-  const ranked=result.ranked.slice(0,4).map((d,i)=>`<div class="reasoningRank"><span>${i+1}</span><div><b>${d.label}</b><small>Priority score ${d.score.toFixed(1)} · confidence ${d.confidence}%</small></div></div>`).join("");
-  const actions=result.immediateActions.map(x=>`<li>${x}</li>`).join("");
-  const next=result.nextQuestion?`<button type="button" class="reasoningNext" data-reasoning-clue="${result.nextQuestion.id}"><small>NEXT BEST QUESTION</small><b>${result.nextQuestion.label}?</b></button>`:`<div class="reasoningNext"><b>Core clue set complete</b></div>`;
-  return `<section class="fastReasoning" aria-label="Hypotension Fast Mode">
-    <div class="fastReasoningHead"><div><span>v0.71 FOUNDATION</span><h4>Hypotension Fast Mode</h4><p>Tap only clues that are present. The differential updates continuously.</p></div><button type="button" data-reasoning-reset>Reset</button></div>
-    <div class="reasoningClues">${clueButtons}</div>
-    <div class="reasoningOutput">
-      <div><h5>Prioritized causes</h5>${ranked}</div>
-      <div><h5>Act now</h5><ol>${actions}</ol>${next}</div>
-    </div>
-    <div class="reasoningResponse"><b>Response after intervention</b><div><button data-reasoning-response="improved" class="${fastReasoningResponse==='improved'?'selected':''}">Improved</button><button data-reasoning-response="partial" class="${fastReasoningResponse==='partial'?'selected':''}">Partial</button><button data-reasoning-response="none" class="${fastReasoningResponse==='none'?'selected':''}">No response</button></div>${fastReasoningResponse?`<small>Response recorded. Re-observe and update the selected clues; ranking will be recalculated.</small>`:''}</div>
-  </section>`;
+
+function fastEnginesReady() {
+  return !!(window.AnesthClinical && window.AnesthQuestions && window.AnesthResponse && window.AnesthAlgorithms && window.AnesthMentor);
 }
+
+/* Selecting a presentation answers some questions outright.
+   Those answers are locked so the mentor never asks them again. */
+function fastSetPresentation(id) {
+  if (!fastEnginesReady()) return;
+  const implied = window.AnesthQuestions.impliedAnswers(id);
+  fastCase.presentation = id;
+  fastCase.implied = implied;
+  Object.keys(implied).forEach(qid => {
+    if (fastCase.answers[qid] === undefined) fastCase.answers[qid] = implied[qid];
+  });
+  if (Object.keys(implied).length) {
+    fastLog('presentation', 'จากอาการที่เลือก: ' + Object.keys(implied).map(qid => {
+      const q = window.AnesthQuestions.byId(qid);
+      const o = q.options.find(x => x.value === implied[qid]);
+      return q.label + ' = ' + o.label;
+    }).join(' · '));
+  }
+}
+
+function fastContext() {
+  const R = window.AnesthResponse;
+  const responseDeltas = R.deltasFrom(fastCase.interventions);
+  const roles = R.rolesFrom(fastCase.interventions);
+  const state = { answers: fastCase.answers, responseDeltas, roles };
+
+  const evaluation = window.AnesthClinical.evaluate(state);
+  const question = window.AnesthQuestions.nextQuestion(state);
+  const awaiting = R.awaitingAssessment(fastCase.interventions);
+  const activeIntervention = fastCase.interventions.find(iv => !iv.given) || null;
+  const algorithm = window.AnesthAlgorithms.route(evaluation.top && evaluation.top.id, fastCase.answers);
+
+  return {
+    state, evaluation, question, awaiting, activeIntervention, algorithm,
+    answeredCount: Object.keys(fastCase.answers).length,
+    crisis: window.AnesthAlgorithms.crisisLinks(evaluation.top && evaluation.top.id, fastCase.answers)
+  };
+}
+
+/* ---- 1. Mentor Bar ---- */
+function fastMentorBarHTML(ctx) {
+  const bar = window.AnesthMentor.mentorBar(ctx);
+  return `<section class="mBar ${bar.tone}"><span class="mBarDot"></span><p>${bar.text}</p></section>`;
+}
+
+/* ---- 2. Current Priority ---- */
+function fastPriorityHTML(ctx) {
+  const pri = window.AnesthMentor.currentPriority(ctx);
+  return `<section class="mCard mPriority ${pri.kind}">
+    <div class="mCardHead"><div class="mLabel">CURRENT PRIORITY</div>
+      <button type="button" class="mReset" data-fast-reset>Reset</button></div>
+    <h3>${pri.title}</h3><p>${pri.text}</p></section>`;
+}
+
+/* ---- 3. Immediate Actions ---- */
+function fastActionsHTML() {
+  const rows = window.AnesthMentor.IMMEDIATE_ACTIONS.map(a => {
+    const st = fastCase.actions[a.id] || 'pending';
+    return `<button type="button" class="mAction ${st}" data-fast-action="${a.id}">
+      <b>${a.title}</b><small>${a.detail}</small></button>`;
+  }).join('');
+  return `<section class="mCard">
+    <div class="mCardHead"><div class="mLabel">IMMEDIATE ACTIONS</div><span class="mHint">แตะ = ทำแล้ว · ปัดซ้าย = เลื่อนไว้</span></div>
+    <div class="mActions">${rows}</div></section>`;
+}
+
+/* ---- 4. Next Best Question ---- */
+function fastQuestionHTML(ctx) {
+  if (ctx.awaiting) return '';
+  if (!ctx.question) {
+    return `<section class="mCard mQuestion"><div class="mLabel">NEXT BEST QUESTION</div>
+      <p class="mNote">${window.AnesthMentor.questionRationale(null, ctx.evaluation)}</p></section>`;
+  }
+  const opts = ctx.question.options.map(o =>
+    `<button type="button" class="mOpt" data-fast-answer="${ctx.question.id}" data-fast-value="${o.value}">${o.label}</button>`
+  ).join('');
+  return `<section class="mCard mQuestion">
+    <div class="mCardHead"><div class="mLabel">NEXT BEST QUESTION</div><span class="mPill">${ctx.answeredCount + 1}</span></div>
+    <p class="mAsk">${ctx.question.text}</p>
+    <div class="mOpts">${opts}</div>
+    <p class="mNote">${window.AnesthMentor.questionRationale(ctx.question, ctx.evaluation)}</p></section>`;
+}
+
+/* ---- 5. Leading Causes / working hypothesis ---- */
+function fastCausesHTML(ctx) {
+  const max = Math.max(...ctx.evaluation.ranked.map(d => Math.abs(d.score)), 1);
+  const rows = ctx.evaluation.ranked.slice(0, 5).map(d => {
+    const pct = Math.max(3, Math.round(Math.max(d.score, 0) / max * 100));
+    const tag = d.role === 'contributor' ? `<span class="mRole">contributor</span>` : '';
+    return `<div class="mCause"><div class="mCauseHead"><b>${d.label}${tag}</b><span>${d.score.toFixed(1)}</span></div>
+      <div class="mBar"><span style="width:${pct}%"></span></div></div>`;
+  }).join('');
+  return `<section class="mCard">
+    <div class="mCardHead"><div class="mLabel">LEADING CAUSES</div><span class="mPill live">LIVE</span></div>
+    <p class="mHypothesis">Working hypothesis — <b>${ctx.evaluation.top.label}</b></p>
+    ${rows}</section>`;
+}
+
+/* ---- 6. Next Action ---- */
+function fastNextActionHTML(ctx) {
+  const plan = window.AnesthMentor.currentPlan(ctx);
+  const steps = plan.lines.map(l => `<li>${l}</li>`).join('');
+  let interventions = '';
+  if (ctx.algorithm && !ctx.awaiting && !ctx.activeIntervention) {
+    interventions = `<div class="mStack mIvs">` + ctx.algorithm.interventions.map(iv =>
+      `<button type="button" class="mIv" data-fast-intervention="${iv.id}"><b>${iv.title}</b><small>${iv.detail}</small></button>`
+    ).join('') + `</div>`;
+  }
+  let active = '';
+  if (ctx.activeIntervention) {
+    active = `<div class="mActive"><b>${ctx.activeIntervention.title}</b><small>${ctx.activeIntervention.detail}</small>
+      <button type="button" class="mGiven" data-fast-given="${ctx.activeIntervention.id}">ทำแล้ว — ประเมินการตอบสนอง</button></div>`;
+  }
+  const links = ctx.crisis.length
+    ? `<div class="mLinks">${ctx.crisis.map(c => `<button type="button" class="approachLink" data-open-crisis="${c}">Open ${c}</button>`).join('')}</div>`
+    : '';
+  return `<section class="mCard">
+    <div class="mLabel">NEXT ACTION</div>
+    <h4 class="mPlanHead">${plan.headline}</h4>
+    <ul class="mPlanList">${steps}</ul>
+    ${active}${interventions}${links}</section>`;
+}
+
+/* ---- 7. Response Assessment ---- */
+function fastResponseHTML(ctx) {
+  if (!ctx.awaiting) return '';
+  const opts = window.AnesthResponse.RESPONSES.map(r =>
+    `<button type="button" class="mResp" data-fast-response="${r.id}"><b>${r.label}</b><small>${r.detail}</small></button>`
+  ).join('');
+  return `<section class="mCard mRespCard">
+    <div class="mCardHead"><div class="mLabel">RESPONSE ASSESSMENT</div><span class="mPill live">ต้องประเมิน</span></div>
+    <p class="mAsk">หลัง ${ctx.awaiting.title} — ผู้ป่วยเปลี่ยนไปอย่างไร</p>
+    <div class="mStack">${opts}</div></section>`;
+}
+
+/* ---- 8. Continuous Reassessment (answers stay editable) ---- */
+function fastReassessHTML(ctx) {
+  const list = window.AnesthQuestions.answeredList(fastCase.answers);
+  const done = fastCase.interventions.filter(iv => iv.response);
+  if (!list.length && !done.length) return '';
+
+  const answers = list.map(a => {
+    const locked = window.AnesthQuestions.isImplied(fastCase.presentation, a.id);
+    return `<button type="button" class="mAns" data-fast-edit="${a.id}">
+      <span>${a.label}${locked ? '<i class="mFrom">จากอาการที่เลือก</i>' : ''}</span><b>${a.valueLabel} ›</b></button>`;
+  }).join('');
+
+  const responses = done.map(iv => {
+    const r = window.AnesthResponse.byId(iv.response);
+    return `<div class="mAns static"><span>${iv.title}</span><b>${r ? r.label : iv.response}</b></div>`;
+  }).join('');
+
+  return `<section class="mCard">
+    <div class="mCardHead"><div class="mLabel">CONTINUOUS REASSESSMENT</div><span class="mHint">แตะเพื่อแก้ — คิดใหม่ทันที</span></div>
+    <div class="mStack">${answers}${responses}</div>
+    <div id="mEditInline"></div></section>`;
+}
+
+/* ---- 9. Timeline ---- */
+function fastTimelineHTML() {
+  if (!fastCase.timeline.length) return '';
+  const rows = fastCase.timeline.slice(0, 30).map(i =>
+    `<div class="mTItem"><time>${i.t}</time><div><span class="mTType ${i.type}">${i.type}</span>${i.text}</div></div>`
+  ).join('');
+  return `<section class="mCard"><div class="mLabel">TIMELINE</div><div class="mTimeline">${rows}</div></section>`;
+}
+
+function fastReasoningHTML() {
+  if (!fastEnginesReady()) return `<div class="reasoningError">Reasoning engines unavailable. Reload the application.</div>`;
+  const ctx = fastContext();
+  return `<div class="mentorMode">
+    ${fastMentorBarHTML(ctx)}
+    ${fastPriorityHTML(ctx)}
+    ${fastActionsHTML()}
+    ${fastQuestionHTML(ctx)}
+    ${fastCausesHTML(ctx)}
+    ${fastNextActionHTML(ctx)}
+    ${fastResponseHTML(ctx)}
+    ${fastReassessHTML(ctx)}
+    ${fastTimelineHTML()}
+  </div>`;
+}
+
+/* ---- interactions ---- */
+
+function fastRerender() { renderHypotension(); }
+
+function fastSetAction(id, status) {
+  const a = window.AnesthMentor.IMMEDIATE_ACTIONS.find(x => x.id === id);
+  fastCase.actions[id] = status;
+  fastLog('action', `${a.title}: ${status === 'done' ? 'ทำแล้ว' : status === 'deferred' ? 'เลื่อนไว้' : 'เปิดใหม่'}`);
+  fastRerender();
+}
+
+function fastAnswer(qid, value) {
+  const q = window.AnesthQuestions.byId(qid);
+  const opt = q.options.find(o => o.value === value);
+  const had = fastCase.answers[qid];
+  fastCase.answers[qid] = value;
+  fastCase.answers = window.AnesthQuestions.pruneOrphans(fastCase.answers);
+  fastLog(had ? 'correction' : 'answer', `${q.label}: ${had ? 'แก้เป็น ' : ''}${opt.label}`);
+  fastRerender();
+}
+
+function fastPickIntervention(id) {
+  const ctx = fastContext();
+  if (!ctx.algorithm) return;
+  const iv = ctx.algorithm.interventions.find(x => x.id === id);
+  if (!iv) return;
+  fastCase.interventions.push({
+    id: iv.id + '-' + Date.now(), title: iv.title, detail: iv.detail,
+    targetDx: iv.targetDx, algorithmId: ctx.algorithm.id, given: false, response: null
+  });
+  fastLog('plan', `เลือก next action: ${iv.title}`);
+  fastRerender();
+}
+
+function fastMarkGiven(uid) {
+  const iv = fastCase.interventions.find(x => x.id === uid);
+  if (!iv) return;
+  iv.given = true;
+  fastLog('action', `ทำแล้ว: ${iv.title}`);
+  fastRerender();
+}
+
+function fastRecordResponse(rid) {
+  const iv = window.AnesthResponse.awaitingAssessment(fastCase.interventions);
+  if (!iv) return;
+  const r = window.AnesthResponse.byId(rid);
+  iv.response = rid;
+  fastLog('response', `${iv.title} → ${r.label}`);
+  const after = window.AnesthClinical.evaluate({
+    answers: fastCase.answers,
+    responseDeltas: window.AnesthResponse.deltasFrom(fastCase.interventions),
+    roles: window.AnesthResponse.rolesFrom(fastCase.interventions)
+  });
+  fastLog('diagnosis', `working hypothesis ใหม่: ${after.top.label}`);
+  fastRerender();
+}
+
+/* Editing distinguishes a correction from a genuine clinical change. */
+function fastOpenEdit(qid) {
+  const q = window.AnesthQuestions.byId(qid);
+  if (!q) return;
+  const opts = q.options.map(o =>
+    `<button type="button" class="mOpt" data-fast-answer="${q.id}" data-fast-value="${o.value}">${o.label}</button>`
+  ).join('');
+  const host = document.getElementById('mEditInline');
+  if (host) host.innerHTML = `<div class="mEdit"><b>${q.text}</b><div class="mOpts">${opts}</div></div>`;
+}
+
+document.addEventListener('click', e => {
+  const act = e.target.closest('[data-fast-action]');
+  if (act) {
+    const id = act.dataset.fastAction;
+    fastSetAction(id, (fastCase.actions[id] === 'done') ? 'pending' : 'done');
+    return;
+  }
+  const ans = e.target.closest('[data-fast-answer]');
+  if (ans) { fastAnswer(ans.dataset.fastAnswer, ans.dataset.fastValue); return; }
+
+  const ivBtn = e.target.closest('[data-fast-intervention]');
+  if (ivBtn) { fastPickIntervention(ivBtn.dataset.fastIntervention); return; }
+
+  const given = e.target.closest('[data-fast-given]');
+  if (given) { fastMarkGiven(given.dataset.fastGiven); return; }
+
+  const resp = e.target.closest('[data-fast-response]');
+  if (resp) { fastRecordResponse(resp.dataset.fastResponse); return; }
+
+  const edit = e.target.closest('[data-fast-edit]');
+  if (edit) { fastOpenEdit(edit.dataset.fastEdit); return; }
+
+  const reset = e.target.closest('[data-fast-reset]');
+  if (reset) {
+    fastCase = { presentation: fastCase.presentation, answers: {}, implied: {}, actions: {}, interventions: [], timeline: [] };
+    fastSetPresentation(fastCase.presentation);
+    fastRerender();
+    return;
+  }
+});
+
+/* swipe left = defer, swipe right = done — no dialogs */
+document.addEventListener('touchstart', e => {
+  const a = e.target.closest('[data-fast-action]');
+  if (a) a._x0 = e.touches[0].clientX;
+}, { passive: true });
+
+document.addEventListener('touchend', e => {
+  const a = e.target.closest('[data-fast-action]');
+  if (!a || a._x0 == null) return;
+  const dx = e.changedTouches[0].clientX - a._x0;
+  a._x0 = null;
+  if (dx > 55) fastSetAction(a.dataset.fastAction, 'done');
+  else if (dx < -55) fastSetAction(a.dataset.fastAction, 'deferred');
+}, { passive: true });
 
 const mechanismData={
  vasodilation:{title:"Vasodilation / low SVR",checks:["ทบทวน depth และยาที่เพิ่งให้","พิจารณา neuraxial sympathetic block","มองหา anaphylaxis แม้ไม่มีผื่น","ทบทวน sepsis, reperfusion หรือ vasoplegia"],links:["Anaphylaxis"]},
@@ -1862,7 +2153,7 @@ const mechanismData={
 };
 function renderHypotension(){
  const panel=$("approachPanel");panel.innerHTML=`
- <div class="approachTitle"><div><h3>Hypotension</h3><p>เริ่มจากค่าที่พบจริง แยกความรุนแรง ประคองพร้อมค้นหากลไก และเชื่อมไป Crisis เมื่อสงสัย</p></div><span class="approachStatus">REASONING FOUNDATION v0.71</span></div>${fastReasoningHTML()}
+ <div class="approachTitle mTitleOnly"><div><h3>Hypotension</h3><p>Senior mentor mode — ประคองก่อน คิดต่อเนื่อง</p></div></div><div id="mEditHost"></div>${fastReasoningHTML()}
  <section class="approachSection"><header><span>1</span><b>Verify & assess severity</b></header><div class="approachSectionBody">${checkList(["วัด NIBP ซ้ำทันที หรือประเมิน waveform/zero/level ของ arterial line","คลำชีพจรและดู trend ไม่ใช้ค่าครั้งเดียวตัดสิน","ประเมิน perfusion, ECG, SpO₂, ETCO₂ และระดับความรู้สึกตัวตามบริบท","พิจารณาทั้งระดับ ระยะเวลา baseline และโรคร่วม ไม่ใช้ MAP ตัวเลขเดียวกับทุกคน"])}</div></section>
  <section class="approachSection"><header><span>2</span><b>Parallel action: stabilize + identify cause</b></header><div class="approachSectionBody"><div class="approachParallel"><div><h4>STABILIZE NOW</h4>${checkList(["แจ้งทีมและศัลยแพทย์เมื่อมีความไม่มั่นคง","หยุด stimulus/traction/insufflation ที่เกี่ยวข้องเมื่อเหมาะสม","ประเมิน airway, oxygenation และ ventilation","เลือก temporary vasoactive support ตาม physiology และ local protocol"])}</div><div><h4>FIND THE CAUSE NOW</h4>${checkList(["HR และ rhythm","ETCO₂ trend และ peak airway pressure","surgical field / blood loss","ยา เลือด หรือเหตุการณ์ใน 5–10 นาทีที่ผ่านมา","position, PEEP, pneumoperitoneum, tourniquet/unclamp"])}</div></div></div></section>
  <section class="approachSection"><header><span>3</span><b>Choose the predominant physiology</b></header><div class="approachSectionBody"><div class="approachDecisionGrid">${Object.entries(mechanismData).map(([k,v])=>`<button class="approachDecision ${selectedMechanism===k?"selected":""}" data-mechanism="${k}"><b>${v.title}</b><small>แตะเพื่อเปิด targeted checks</small></button>`).join("")}</div><div id="mechanismBranch"></div></div></section>
@@ -1873,9 +2164,10 @@ function renderHypotension(){
 }
 function renderMechanismBranch(){let host=$("mechanismBranch");if(!host||!selectedMechanism)return;let d=mechanismData[selectedMechanism];host.innerHTML=`<div class="approachBranch"><h4>${d.title}</h4><ul>${d.checks.map(x=>`<li>${x}</li>`).join("")}</ul>${d.links.length?`<div class="approachLinks">${d.links.map(x=>`<button class="approachLink" data-open-related="${x}">Related: ${x}</button>`).join("")}</div>`:""}</div>`}
 function renderApproachPanel(){if(selectedApproachId==="hypotension")return renderHypotension();let item=CLINICAL_APPROACHES.find(x=>x.id===selectedApproachId);$("approachPanel").innerHTML=`<div class="approachTitle"><div><h3>${item?.name||"Clinical Approach"}</h3><p>Clinical pathway scaffold</p></div><span class="approachStatus">STRUCTURE READY</span></div><div class="approachPlaceholder"><div><b>${item?.name}</b><span>โครงสร้าง Entry → Immediate assessment → Differential → Investigations → Pitfalls → Decision → Reassessment → Crisis link พร้อมแล้ว<br>เนื้อหาฉบับเต็มจะเติมและตรวจหลักฐานทีละ pathway โดยเริ่มจาก Hypotension</span></div></div>`}
-function initClinicalApproach(){renderApproachEntries();renderApproachPanel();$("approachSearch").addEventListener("input",e=>{renderApproachEntries(normalizeClinicalText(e.target.value));let ranked=CLINICAL_APPROACHES.map(x=>({...x,score:clinicalScore(x,e.target.value)})).sort((a,b)=>b.score-a.score);if(e.target.value.trim()&&ranked[0]?.score>0){selectedApproachId=ranked[0].id;renderApproachPanel();renderApproachEntries(e.target.value)}});$("approachClear").onclick=()=>{$("approachSearch").value="";renderApproachEntries();};}
+/* Fast Mode is one-tap only: no keyboard, no free-text search. */
+function initClinicalApproach(){fastSetPresentation(selectedApproachId);renderApproachEntries();renderApproachPanel();}
 document.addEventListener("click",e=>{
- let entry=e.target.closest("[data-approach-id]");if(entry){selectedApproachId=entry.dataset.approachId;selectedMechanism="";renderApproachEntries($("approachSearch")?.value||"");renderApproachPanel();document.getElementById("approachPanel")?.scrollIntoView({behavior:"smooth",block:"start"});return}
+ let entry=e.target.closest("[data-approach-id]");if(entry){selectedApproachId=entry.dataset.approachId;selectedMechanism="";fastSetPresentation(selectedApproachId);renderApproachEntries();renderApproachPanel();document.getElementById("approachPanel")?.scrollIntoView({behavior:"smooth",block:"start"});return}
  let mech=e.target.closest("[data-mechanism]");if(mech){selectedMechanism=mech.dataset.mechanism;document.querySelectorAll("[data-mechanism]").forEach(x=>x.classList.toggle("selected",x===mech));renderMechanismBranch();document.getElementById("mechanismBranch")?.scrollIntoView({behavior:"smooth",block:"center"});return}
  let reassess=e.target.closest("[data-reassess]");if(reassess){let map={improved:"ตอบสนองดี → ดำเนิน targeted management ต่อ ติดตาม trend และค้นหาสาเหตุให้ครบ",partial:"ตอบสนองบางส่วน → พิจารณา mixed physiology ทบทวน intervention และ reassess ซ้ำ",none:"ไม่ตอบสนอง → ตรวจ delivery/measurement และทบทวน diagnosis; มองหา hemorrhage, obstruction, pump failure หรือ crisis ที่พลาด"};$("reassessResult").innerHTML=`<div class="approachBranch"><b>${map[reassess.dataset.reassess]}</b></div>`;return}
  let crisis=e.target.closest("[data-open-crisis]");if(crisis){showAppTab("crisis",true);let q=crisis.dataset.openCrisis;$("crisisSearch").value=q;filterCrisis(q);return}
@@ -1883,4 +2175,4 @@ document.addEventListener("click",e=>{
 });
 initClinicalApproach();
 
-if("serviceWorker"in navigator)navigator.serviceWorker.register("./sw.js?v=0710",{updateViaCache:"none"});renderCatFilters();renderLibraryCompact();sync();
+if("serviceWorker"in navigator)navigator.serviceWorker.register("./sw.js?v=0720",{updateViaCache:"none"});renderCatFilters();renderLibraryCompact();sync();

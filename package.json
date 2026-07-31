@@ -4,10 +4,11 @@
   "description": "Anesthesia dose, dilution, crisis and clinical reasoning decision-support prototype",
   "private": true,
   "scripts": {
-    "test": "node test-calc.js && node test-reasoning.js && node validate.js",
+    "test": "node test-calc.js && node test-reasoning.js && node test-engines.js && node test-mentor-ui.js && node validate.js",
     "validate": "node validate.js",
     "test:calc": "node test-calc.js",
-    "test:reasoning": "node test-reasoning.js"
+    "test:reasoning": "node test-reasoning.js",
+    "test:engines": "node test-engines.js && node test-mentor-ui.js"
   },
   "license": "UNLICENSED"
 }

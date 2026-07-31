@@ -9,8 +9,12 @@ const SHELL = [
   './index.html',
   './style.css?v=0720',
   './clinical-reasoning.js?v=0720',
+  './engines/clinical-engine.js?v=0720',
+  './engines/question-engine.js?v=0720',
+  './engines/response-engine.js?v=0720',
+  './engines/algorithm-router.js?v=0720',
+  './engines/mentor-engine.js?v=0720',
   './app.js?v=0720',
-  './senior-mentor.js?v=0720',
   './manifest.json?v=0720',
   './cloud.js?v=0720'
 ];

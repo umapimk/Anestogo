@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#f5f8fc">
 <title>Anesthculator v0.71.0</title>
-<link rel="manifest" href="./manifest.json?v=0710">
+<link rel="manifest" href="./manifest.json?v=0720">
 <link rel="stylesheet" href="./style.css?v=0720">
 </head>
 <body>
@@ -101,17 +101,11 @@
 
 <section id="approach" class="tab">
   <div class="approachHero">
-    <div><span class="eyebrow">CLINICAL REASONING MODE</span><h2>🧭 Clinical Approach</h2><p>เริ่มจากสิ่งที่เห็นจริง ประเมินสาเหตุ แล้วเชื่อมไป Crisis Protocol เมื่อสงสัยภาวะจำเพาะ</p></div>
-    <div class="approachModeBadge">What is happening?</div>
-  </div>
-  <div class="approachSearchCard">
-    <label for="approachSearch"><b>Semantic clinical search</b><small>ค้นจากอาการ ความหมาย คำเกี่ยวข้อง เหตุการณ์ ยา monitor หรือบริบทการผ่าตัด</small></label>
-    <div class="approachSearchRow"><input id="approachSearch" type="search" placeholder="เช่น BP 60/30 หลัง cefazolin, stiff bag, ETCO₂ ลด, ตื่นช้า"><button id="approachClear" type="button">✕</button></div>
-    <div id="approachSearchWhy" class="approachSearchWhy">เลือกอาการด้านล่าง หรือพิมพ์สิ่งที่เกิดขึ้นกับผู้ป่วย</div>
+    <div><h2>Clinical Approach</h2></div>
   </div>
   <div class="approachLayout">
     <aside>
-      <div class="approachListHead"><b>Entry symptoms</b><small>12 clinical presentations</small></div>
+      <div class="approachListHead"><b>Current Presentation</b><small>แตะเลือกหนึ่งอาการ</small></div>
       <div id="approachEntries" class="approachEntries"></div>
     </aside>
     <article id="approachPanel" class="approachPanel"></article>
@@ -377,8 +371,12 @@
 </script>
 
 <script src="./clinical-reasoning.js?v=0720"></script>
+<script src="./engines/clinical-engine.js?v=0720"></script>
+<script src="./engines/question-engine.js?v=0720"></script>
+<script src="./engines/response-engine.js?v=0720"></script>
+<script src="./engines/algorithm-router.js?v=0720"></script>
+<script src="./engines/mentor-engine.js?v=0720"></script>
 <script src="./app.js?v=0720"></script>
-<script src="./senior-mentor.js?v=0720"></script>
 <script src="./cloud.js?v=0720"></script>
 <div id="appToast" class="appToast" role="status" aria-live="polite"></div>
 </body>
