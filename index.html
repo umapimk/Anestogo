@@ -1,23 +1,384 @@
 <!doctype html>
 <html lang="th">
 <head>
-<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<meta name="theme-color" content="#07111c"><title>Anesthculator v0.73.1 Senior Mentor</title>
-<link rel="stylesheet" href="src/style.css">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#f5f8fc">
+<title>Anesthculator v0.72.0</title>
+<link rel="manifest" href="./manifest.json?v=0720">
+<link rel="stylesheet" href="./style.css?v=0720">
 </head>
-<body><main class="app">
-<header class="top"><div><div class="eyebrow">ANESTHCULATOR v0.73.1 • SENIOR MENTOR ENGINE</div><h1>Hypotension • Senior Mentor Mode</h1></div><button id="resetBtn" class="ghost">Reset</button></header>
-<div class="warning"><b>Prototype only.</b> ยังไม่ผ่าน clinical validation และไม่ใช้แทนวิจารณญาณของวิสัญญีแพทย์หรือ local protocol</div>
-<section class="card context"><div class="row"><div class="label">FAST CONTEXT</div><button id="contextToggle" class="textBtn">แก้ไข</button></div><div id="contextSummary" class="chips"></div><div id="contextPanel" class="hidden"></div></section>
-<section class="card priority"><div class="row"><div class="label">CURRENT PRIORITY</div><span id="confidencePill" class="pill"></span></div><h2 id="priorityTitle"></h2><p id="priorityText"></p><div id="mentorCue" class="mentor"></div></section>
-<section class="card"><div class="row"><div class="label">DO NOW</div><span class="small">แตะเมื่อทำแล้ว</span></div><div id="actions" class="actions"></div></section>
-<section class="card" id="questionCard"><div class="row"><div class="label">NEXT BEST QUESTION</div><span id="questionMeta" class="pill"></span></div><div id="questionWhy" class="why"></div><div id="questionText" class="question"></div><div id="questionOptions" class="options"></div></section>
-<section class="card hidden" id="interventionCard"><div class="row"><div class="label">ACTION TO TEST / TREAT</div><span class="pill">Action → Response</span></div><h3 id="interventionTitle"></h3><p id="interventionDetail"></p><div id="interventionOptions" class="stack"></div></section>
-<section class="card hidden" id="responseCard"><div class="row"><div class="label">RESPONSE ASSESSMENT</div><span class="pill live">Reassess now</span></div><div class="question" id="responseQuestion"></div><div id="responseOptions" class="stack"></div></section>
-<section class="card"><div class="row"><div class="label">WORKING DIAGNOSIS</div><span class="pill live">LIVE</span></div><div id="causes"></div></section>
-<section class="card"><div class="label">CLINICAL EVIDENCE</div><div id="evidence"></div></section>
-<section class="card"><div class="row"><div class="label">ANSWERED / EDITABLE</div><span class="small">แตะเพื่อแก้ไข</span></div><div id="answers" class="stack"></div></section>
-<section class="card"><div class="label">INTELLIGENT TIMELINE</div><div id="timeline" class="timeline"></div></section>
+<body>
+<header>
+  <div class="headerLeft"><button id="appBackBtn" class="appBackBtn" type="button" aria-label="Back" title="Back">← <span>Back</span></button><div class="brand"><span class="drop">💧</span><div><b>Anesthculator <small>v0.72.0</small></b><em>Calm OR • Thailand Edition</em></div></div></div>
+  <button id="theme">☾</button>
+</header>
+
+<main>
+<div class="warning"><b>Clinical decision-support prototype.</b> Verify dose, stock concentration, dilution, contraindications and crisis algorithms against the current approved institutional protocol before clinical use.</div>
+
+<nav>
+<button class="on" data-tab="patient">👤 Patient</button>
+<button data-tab="plan">✨ Plan</button>
+<button data-tab="approach">🧭 Clinical Approach</button>
+<button data-tab="crisis">🚨 Crisis</button>
+<button data-tab="library">💊 Library</button>
+<button data-tab="refs">📚 References</button>
+<button data-tab="cloud">☁️ Cloud</button>
+</nav>
+
+<section id="patient" class="tab on">
+  <div class="hero">
+    <div><span>QUICK ENTRY</span><h1>New Patient</h1></div>
+    <i>💧</i>
+  </div>
+
+  <div class="wizard card">
+    <div class="progress">
+      <button data-step="sex" class="done">1 Sex</button>
+      <button data-step="age" class="active">2 Age</button>
+      <button data-step="weight">3 Weight</button>
+      <button data-step="height">4 Height</button>
+    </div>
+
+    <div id="step-sex" class="wstep">
+      <div class="labelBig">Sex</div>
+      <div class="sexRow">
+        <button id="female" class="sexBtn selected">👩 Female</button>
+        <button id="male" class="sexBtn">👨 Male</button>
+      </div>
+      <button class="primary wide nextSex">Continue → Age</button>
+    </div>
+
+    <div id="step-age" class="wstep show">
+      <div class="labelBig">Age</div>
+      <div class="ageSwitch"><button id="ageYearsBtn" class="selected">Years</button><button id="ageMonthsBtn">Months</button></div>
+      <div class="bigValue"><span id="ageValue">30</span><small id="ageUnit">years</small></div>
+      <div class="keypad" data-target="age"></div>
+      <button class="primary wide" id="ageNext">✓ Next → Weight</button>
+    </div>
+
+    <div id="step-weight" class="wstep">
+      <div class="labelBig">Weight</div>
+      <div class="bigValue"><span id="weightValue">60.0</span><small>kg</small></div>
+      <div class="keypad" data-target="weight"></div>
+      <button class="primary wide" id="weightNext">✓ Next → Height</button>
+    </div>
+
+    <div id="step-height" class="wstep">
+      <div class="labelBig">Height</div>
+      <div class="bigValue"><span id="heightValue">165</span><small>cm</small></div>
+      <div class="keypad" data-target="height"></div>
+      <button class="primary wide" id="heightNext">✓ Build Anesthesia Plan</button>
+    </div>
+
+    <div class="patientMini">
+      <span id="sexMini">👩 Female</span>
+      <span id="ageMini">30 yr</span>
+      <span id="weightMini">60 kg</span>
+      <span id="heightMini">165 cm</span>
+    </div>
+    <details class="weightDetails"><summary>⚖️ Dosing weight details</summary><div class="weightGrid"><span>TBW<b id="pTBW">60 kg</b></span><span>IBW<b id="pIBW">—</b></span><span>LBW<b id="pLBW">—</b></span><span>AdjBW<b id="pAdjBW">—</b></span></div><small>Derived weights are calculation aids. The dose record determines which weight basis is used.</small></details>
+  </div>
+</section>
+
+<section id="plan" class="tab">
+  <div class="head"><div><span>CASE PLAN</span><h2>Anesthesia Plan</h2></div><strong id="chip"></strong></div>
+  <div class="stats"><div>Age group<b id="ag">Adult</b></div><div>BMI<b id="bmi">—</b></div><div>BSA<b id="bsa">—</b></div></div>
+  <details class="weightDetails"><summary>⚖️ Dosing weights</summary><div class="weightGrid"><span>TBW<b id="planTBW">60 kg</b></span><span>IBW<b id="planIBW">—</b></span><span>LBW<b id="planLBW">—</b></span><span>AdjBW<b id="planAdjBW">—</b></span></div></details>
+  <div class="quickLegend planLegend">
+<span class="ql" style="color:#e35b64">● Muscle relaxant</span>
+<span class="ql" style="color:#4f8fd8">● Opioid</span>
+<span class="ql" style="color:#8b6fd6">● Induction</span>
+<span class="ql" style="color:#d978a5">● Antiemetic</span>
+<span class="ql" style="color:#e59b42">● Hemodynamic</span>
+<span class="ql" style="color:#45a69a">● Local anesthetic</span>
+</div><div class="timeline">① Induction　② Intubation/NMB　③ Maintenance　④ Reversal　⑤ PONV　⑥ Post-op</div>
+  <p class="note">ยาที่อยู่ในกลุ่มเดียวกันเป็นทางเลือกเพื่อเปรียบเทียบ ไม่ได้หมายความว่าต้องให้พร้อมกันทั้งหมด</p>
+  <div id="plans"></div>
+</section>
+
+
+<section id="approach" class="tab">
+  <div class="approachHero">
+    <div><span class="eyebrow">CLINICAL REASONING MODE</span><h2>🧭 Clinical Approach</h2><p>เริ่มจากสิ่งที่เห็นจริง ประเมินสาเหตุ แล้วเชื่อมไป Crisis Protocol เมื่อสงสัยภาวะจำเพาะ</p></div>
+    <div class="approachModeBadge">What is happening?</div>
+  </div>
+  <div class="approachSearchCard">
+    <label for="approachSearch"><b>Semantic clinical search</b><small>ค้นจากอาการ ความหมาย คำเกี่ยวข้อง เหตุการณ์ ยา monitor หรือบริบทการผ่าตัด</small></label>
+    <div class="approachSearchRow"><input id="approachSearch" type="search" placeholder="เช่น BP 60/30 หลัง cefazolin, stiff bag, ETCO₂ ลด, ตื่นช้า"><button id="approachClear" type="button">✕</button></div>
+    <div id="approachSearchWhy" class="approachSearchWhy">เลือกอาการด้านล่าง หรือพิมพ์สิ่งที่เกิดขึ้นกับผู้ป่วย</div>
+  </div>
+  <div class="approachLayout">
+    <aside>
+      <div class="approachListHead"><b>Entry symptoms</b><small>12 clinical presentations</small></div>
+      <div id="approachEntries" class="approachEntries"></div>
+    </aside>
+    <article id="approachPanel" class="approachPanel"></article>
+  </div>
+</section>
+
+<section id="crisis" class="tab">
+  <div class="head"><div><span class="red">EMERGENCY MODE</span><h2>🚨 Crisis / Special Events</h2></div><strong id="cchip"></strong></div>
+  <div class="crisisToolbar">
+    <input id="crisisSearch" type="search" placeholder="🔎 ค้นหาเหตุการณ์ เช่น anaphylaxis, airway, bleeding">
+    <button id="crisisStartBtn" type="button" class="crisisStartBtn">▶ START CRISIS</button>
+    <button id="crisisResetBtn" type="button">↺ Reset</button>
+  </div>
+  <div id="crisisRunBar" class="crisisRunBar" hidden>
+    <div><span class="liveDot"></span><b id="crisisElapsed">00:00</b><small id="crisisStartedAt"></small></div>
+
+  </div>
+  <div id="cbuttons" class="cbuttons"></div>
+  <div id="cpanel"></div>
+  <details id="crisisLogPanel" class="crisisLogPanel">
+    <summary>🕒 Timeline <span id="crisisLogCount">0</span></summary>
+    <div id="crisisLog" class="crisisLog"></div>
+    <button id="copyCrisisLog" type="button">Copy timeline</button>
+  </details>
+</section>
+
+<section id="library" class="tab">
+  <div class="libraryHeader">
+    <div><span class="eyebrow">REFERENCE</span><h2>📖 Drug Library</h2><p>รายชื่อยาเรียงตาม Generic name A–Z</p></div>
+  </div>
+  <div class="libraryTools">
+    <div class="searchWrap">
+      <input id="search" placeholder="🔎 Search generic drug...">
+      <button id="clearSearchBtn" type="button" aria-label="Clear search">✕</button>
+    </div>
+    <div class="libraryActionRow">
+      <button id="addDrugBtn">＋ Add Drug</button>
+      <button id="manageCatsBtn">🗂 Categories</button>
+      <button id="showHidden">👁 Hidden</button>
+    </div>
+    <div class="libraryLifecycleRow">
+      <button id="showActiveDrugs" class="active">✅ Active</button>
+      <button id="showArchivedDrugs">📦 Archived</button>
+      <select id="searchScope">
+        <option value="current">Search current view</option>
+        <option value="all">Search Active + Archived</option>
+      </select>
+    </div>
+  </div>
+  <div class="libraryManage">
+    <button id="exportDrugsBtn">⬆️ Export Local Drugs</button>
+    <button id="exportSafetyBtn">🛡 Export Safety Backup</button>
+    <button id="importSafetyBtn">🛡 Import Safety Backup</button>
+    <input id="importSafetyFile" type="file" accept="application/json,.json" hidden>
+    <button id="importDrugsBtn">⬇️ Import Local Drugs</button>
+    <input id="importDrugsFile" type="file" accept="application/json,.json" hidden>
+  </div>
+  <div id="catFilters" class="catFilters"></div>
+  <details class="libraryGuide">
+    <summary>ℹ️ Library guide / verification status</summary>
+    <div class="libraryHint">Search and Category are mutually exclusive: typing a drug name resets Category to All; choosing a Category clears the old search automatically. Hidden drugs remain searchable and are marked HIDDEN. Library Hide does not affect Plan.<br><b>Category integrity:</b> Primary Category is checked by Generic name against the Master Medication Database, so opioid drugs cannot be mislabeled as Non-Opioid Analgesics.<br><b>Classification:</b> a single canonical set of 16 Primary Categories is used; legacy synonyms are migrated to the canonical category.<br><b>Verification:</b> SOURCE VERIFIED = authoritative source checked; LOCAL VERIFIED = locally/institution-verified dose record; THAI CROSS-CHECK PENDING = Thai-primary reconciliation incomplete; CONFLICT = sources differ; DOSE LOCKED = calculator disabled for that record.</div>
+  </details>
+  <div class="libraryLayout">
+    <div id="libList" class="libList"></div>
+    <div id="drugDetail" class="drugDetail emptyDetail">
+      <div class="emptyDetailIcon">💊</div>
+      <b>เลือกชื่อยาเพื่อดูรายละเอียด</b>
+      <span>Dose • Stock & Dilution • Contraindication • Reference</span>
+    </div>
+  </div>
+</section>
+
+<section id="refs" class="tab">
+  <h2>📚 Reference Library</h2>
+  <div class="refCard"><b>Thailand primary</b><p>RCAT • Siriraj • Ramathibodi • Chulalongkorn</p></div>
+  <div class="refCard"><b>Perioperative resuscitation backbone</b><p><b>PeRLS 2025</b> • cause-directed perioperative resuscitation</p><small>Applied across the full Crisis Library in v0.10. AHA 2025 supplies age/rhythm-specific CPR and Special Circumstances guidance; disease-specific authorities supersede generic logic where applicable.</small></div>
+<div class="refCard"><b>Local verification layer</b><p>🔒 Dose Locked → Verify & Unlock → LOCAL VERIFIED</p><small>Local verification stays in this browser, preserves the original reference entry, and can be re-locked.</small></div>
+<div class="refCard"><b>v0.25 Canonical Drug Categories</b>
+<p>Category names are standardized to the 16 Primary Categories in <b>ยา ค้นจาก ai(2).xlsx</b>.</p>
+<small>Synonymous legacy categories are automatically merged. Example: Opioids + Analgesics / Opioids + Opioid Analgesics → Opioid Analgesics. Sub Category remains the Drug class and is not promoted into a separate Primary Category.</small>
+</div>
+<div class="refCard"><b>v0.24 Drug Classification</b>
+<p>Primary Category และ Drug class ถูกจัดใหม่จากไฟล์ <b>ยา ค้นจาก ai(1).xlsx</b> เป็นหลัก</p>
+<small>Mapped 63 generic-name records in the built-in library. Classification metadata does not change dose-verification status. User Local Classification Overrides still take precedence until Reset to Reference.</small></div>
+<div class="refCard"><b>v0.32 Local Verification</b>
+<p>Local Verify is restored and is now dose-record specific: one drug can have separate local verification for Induction, Maintenance, Post-op, RSI, infusion, or any other indication/phase.</p>
+<small>Required fields: dose min/default/max, unit, stock, route/population, traceable reference, version/date, and page/table/section. Local Verify is stored in this browser/device and does not overwrite the built-in source record.</small></div>
+<div class="refCard"><b>v0.31 Stock Concentration Override</b>
+<p>Stock concentration edits are now persistent per drug on this browser/device and are applied immediately to dose-to-mL and dilution calculations.</p>
+<small>Use Edit stock on the drug card or dosing record. Reset default restores the built-in/reference stock value. Clinical dose logic is otherwise unchanged.</small></div>
+<div class="refCard"><b>v0.28 Category Integrity</b>
+<p>Generic-name category integrity is enforced using the uploaded Master Medication Database.</p>
+<small>Examples: Fentanyl, Morphine, Remifentanil, Sufentanil, Pethidine/Meperidine and Hydromorphone are forced to primary category <b>Opioid Analgesics</b>. Paracetamol, Parecoxib and Ketorolac remain <b>Non-Opioid Analgesics & Co-analgesics</b>. Legacy contradictory browser overrides are automatically cleaned on first load.</small>
+</div>
+<div class="refCard"><b>v0.23 Verification Batch 1</b>
+<p>Source-level verification completed for Propofol induction, Etomidate induction, Rocuronium intubation/RSI/maintenance/infusion, Neostigmine reversal, Lidocaine adult maximums, Bupivacaine adult technique-specific limits, Ropivacaine adult technique-specific tables, RCAT/MHAUS dantrolene crisis source, and ASRA LAST lipid-emulsion source.</p>
+<small>Thai indication-level cross-check remains pending where an authoritative Thai source has not yet been reconciled. Remaining Drug Library entries stay VERIFY or DOSE LOCKED.</small></div>
+<div class="refCard"><b>International anesthesia</b><p>Miller • Barash • ASA • SPA • current product labels (DailyMed/FDA where applicable)</p><small>v0.12 formulary includes dose-locked drugs when a verified dose record has not yet been reconciled with Thailand practice.</small></div>
+  <div class="refCard"><b>AHA 2025 CPR/ECC</b><p>Adult Advanced Life Support • Pediatric Advanced Life Support (AHA/AAP) • Adult & Pediatric Special Circumstances of Resuscitation</p><small>Used primarily for resuscitation, peri-arrest, rhythm-specific and special-circumstance cross-checking.</small></div>
+  <div class="refCard"><b>Perioperative anaphylaxis</b><p>ANZAAG/ANZCA Perioperative Anaphylaxis Management Guidelines • Resuscitation Council UK perioperative anaphylaxis algorithm</p><small>Used as international anesthesia-specific references pending Thai-primary reconciliation.</small></div>
+<div class="refCard"><b>ASRA Pain Medicine — Regional / Local Anesthesia</b>
+<p>LAST Checklist 2020 v1.1 • Pediatric Regional Anesthesia Practice Advisory • Antithrombotic/Thrombolytic Regional Anesthesia Guideline, 5th edition (2025)</p>
+<small>ASRA is the primary international disease-specific reference for LAST and an important safety reference for regional/neuraxial anesthesia. Drug-specific dose entries remain subject to product label + Thai/RCAT/local reconciliation.</small></div>
+<div class="refCard"><b>Crisis-specific</b><p>ASRA LAST Checklist • <b>RCAT MH Guideline 2569 (primary Thailand)</b> • MHAUS MH (cross-check)</p><small>When authoritative sources conflict, Anesthculator displays a clickable Guideline differences note rather than silently merging values.</small></div>
+</section>
 </main>
-<div id="editSheet" class="sheet hidden"><div class="sheetPanel"><div class="handle"></div><div class="label">EDIT ANSWER</div><h3 id="editTitle"></h3><div id="editOptions" class="options"></div><button id="cancelEdit" class="ghost full">Cancel</button></div></div>
-<script src="src/app.js"></script></body></html>
+
+<section id="cloud" class="tab">
+  <div class="head"><div><span>CLOUD LIBRARY</span><h2>☁️ Evidence & Verification Cloud</h2></div><strong id="cloudStatus">Signed out</strong></div>
+  <div class="warning"><b>Privacy boundary:</b> Patient age, sex, weight, height and case calculations are never uploaded. Only Drug Library, references, verification metadata and evidence files are cloud-enabled.</div>
+  <div id="cloudAuthCard" class="card cloudCard"><h3>Account</h3><p id="cloudUserText">Sign in to use the shared Drug Library.</p><div class="cloudGrid"><label>Email<input id="cloudEmail" type="email" autocomplete="email"></label><label>Password<input id="cloudPassword" type="password" autocomplete="current-password"></label></div><div class="drugActions"><button id="cloudSignIn" type="button">Sign in</button><button id="cloudSignUp" type="button">Create account</button><button id="cloudSignOut" type="button" hidden>Sign out</button><button id="cloudRefresh" type="button">↻ Refresh</button></div><p id="cloudSyncText">Sign in first.</p></div>
+  <div class="cloudTabs" role="tablist"><button data-cloudtab="references" class="active">References</button><button data-cloudtab="files">Evidence Files</button><button data-cloudtab="reconcile">Reconciliation</button><button data-cloudtab="verifications">Verifications</button><button data-cloudtab="intake">📥 Intake Hub</button><button data-cloudtab="users">Users / Roles</button></div>
+  <div id="cloudPane-references" class="cloudPane active"><div class="card cloudCard"><h3>References</h3><div id="cloudReferencesList" class="cloudList">Sign in and refresh.</div></div><div class="card cloudCard"><h3>Add Reference</h3><p id="cloudDoseContext" class="note">Not linked to a dose record.</p><div class="cloudGrid"><label>Title<input id="refTitle"></label><label>Organization<input id="refOrg"></label><label>Edition / version<input id="refEdition"></label><label>Publication date<input id="refDate" type="date"></label><label>Page<input id="refPage"></label><label>Table<input id="refTable"></label><label>Section<input id="refSection"></label><label>Source type<select id="refType"><option>guideline</option><option>product_label</option><option>institutional_protocol</option><option>textbook</option><option>other</option></select></label></div><label>URL<input id="refUrl" type="url"></label><label>Notes<textarea id="refNotes" rows="3"></textarea></label><label>Evidence file (optional)<input id="refFile" type="file" accept=".pdf,.xlsx,.xls,image/*"></label><div class="drugActions"><button id="saveReferenceCloud" type="button">＋ Save Reference / Evidence</button></div><div id="refCloudResult" class="note"></div><div id="uploadDiagnostic" class="evidenceDiagnostic" hidden></div><p class="note evidenceSafetyNote">Saving evidence does not change medication data. Use Reconciliation → Extract & Compare, then clinician Review/Approve.</p></div></div>
+  <div id="cloudPane-files" class="cloudPane"><div class="card cloudCard"><h3>Evidence Files</h3><div id="cloudFilesList" class="cloudList">Sign in and refresh.</div></div></div>
+
+  <div id="cloudPane-reconcile" class="cloudPane">
+    <div class="card cloudCard">
+      <div class="reconcileHead">
+        <div>
+          <h3>Evidence Reconciliation</h3>
+          <p class="note">Machine-assisted extraction only. A reviewer/admin must approve before any dose record is changed.</p>
+        </div>
+        <button id="refreshReconciliation" type="button">↻ Refresh</button>
+      </div>
+      <div class="reconcileLegend">
+        <span>UPLOADED</span><span>EXTRACTED</span><span>REVIEW REQUIRED</span><span>APPROVED</span><span>REJECTED</span>
+      </div>
+      <div class="evidenceQueueToolbar">
+  <div>
+    <b>Clinician review queue</b>
+    <small id="evidenceQueueSummary">No items selected.</small>
+  </div>
+  <div class="evidenceQueueActions">
+    <button type="button" onclick="cloudSelectEligibleEvidence(true)">Select eligible</button>
+    <button type="button" onclick="cloudSelectEligibleEvidence(false)">Clear</button>
+    <button id="bulkApproveEvidenceBtn" class="approveBtn" type="button" onclick="cloudBulkApproveEvidence()" disabled>✓ Approve selected</button>
+  </div>
+</div>
+<div id="cloudReconciliationList" class="cloudList">Sign in and refresh.</div>
+    </div>
+
+    <div class="card cloudCard">
+      <h3>Analyze an uploaded evidence file</h3>
+      <p class="note">Select an evidence file already stored in Cloud, then extract candidate drug / dose / dosing-weight statements.</p>
+      <label>Evidence file
+        <select id="reconcileFileSelect"><option value="">Choose evidence file…</option></select>
+      </label>
+      <div class="drugActions">
+        <button id="analyzeEvidenceBtn" type="button">✨ Extract & Compare</button>
+      </div>
+      <div id="reconcileDiagnostic" class="evidenceDiagnostic" hidden></div><div id="reconcileAnalyzeResult" class="note"></div>
+    </div>
+  </div>
+
+  <div id="cloudPane-verifications" class="cloudPane"><div class="card cloudCard"><h3>Verifications</h3><p id="verificationDoseContext" class="note">Select a cloud dose record from Drug Library to filter or verify.</p><div id="cloudVerificationsList" class="cloudList">Sign in and refresh.</div><div class="drugActions"><button id="createPendingVerification" type="button">＋ Create pending verification for selected dose</button></div></div></div>
+  
+  <div id="cloudPane-intake" class="cloudPane">
+    <div class="card cloudCard intakeHero">
+      <span>CONTROLLED DATA INGESTION</span>
+      <h3>Medication Evidence Intake Hub</h3>
+      <p>Manual entry, spreadsheet import, document analysis and pasted clinical text all end in a review queue. Nothing is merged silently.</p>
+    </div>
+
+    <div class="intakeModes">
+      <button class="active" data-intakemode="manual" type="button">✍️ Manual Add</button>
+      <button data-intakemode="sheet" type="button">📊 CSV / Excel</button>
+      <button data-intakemode="document" type="button">📄 Document / Image</button>
+      <button data-intakemode="paste" type="button">📋 Paste Text</button>
+    </div>
+
+    <div class="card cloudCard intakePanel" data-intakepanel="manual">
+      <h3>Manual Add Drug</h3>
+      <p class="note">Use Drug Library → Add Drug for complete manual entry. Keep a newly entered dose locked until it is verified.</p>
+      <button id="openManualDrugAdd" type="button">Open Drug Library</button>
+    </div>
+
+    <div class="card cloudCard intakePanel" data-intakepanel="sheet" hidden>
+      <h3>Import CSV / Excel</h3>
+      <p class="note">CSV works directly. Excel uses a browser spreadsheet parser when available.</p>
+      <input id="intakeSheetFile" type="file" accept=".csv,.xlsx,.xls,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel">
+      <div id="intakeSheetStatus" class="note"></div>
+      <div id="intakeColumnMap" class="columnMapGrid"></div>
+      <div id="intakeSheetPreview"></div>
+      <button id="buildSpreadsheetCandidates" type="button">Create review candidates</button>
+    </div>
+
+    <div class="card cloudCard intakePanel" data-intakepanel="document" hidden>
+      <h3>Analyze Document or Image</h3>
+      <p class="note">PDF, DOCX and text can be analyzed. Images may be stored as evidence; OCR is not enabled in this browser build.</p>
+      <input id="intakeEvidenceFile" type="file" accept=".pdf,.docx,.txt,.csv,.png,.jpg,.jpeg,.webp,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,image/*,text/plain,text/csv">
+      <textarea id="intakeDocumentNotes" rows="3" placeholder="Optional source or protocol notes"></textarea>
+      <button id="analyzeIntakeDocument" type="button">Analyze and create candidates</button>
+      <div id="intakeDocumentStatus" class="note"></div>
+    </div>
+
+    <div class="card cloudCard intakePanel" data-intakepanel="paste" hidden>
+      <h3>Paste Clinical Text</h3>
+      <textarea id="intakePasteText" rows="12" placeholder="Paste guideline text, protocol text or a medication dosing statement"></textarea>
+      <div class="cloudGrid">
+        <label>Source title<input id="intakePasteTitle"></label>
+        <label>Page / section<input id="intakePastePage"></label>
+      </div>
+      <button id="analyzePastedClinicalText" type="button">Analyze pasted text</button>
+      <div id="intakePasteStatus" class="note"></div>
+    </div>
+
+    <div class="card cloudCard">
+      <div class="intakeQueueHeader">
+        <div><h3>Import Review Queue</h3><p class="note">Exact match, probable match, new dose record, conflict, new drug or insufficient evidence.</p></div>
+        <button id="clearIntakeQueue" type="button">Clear queue</button>
+      </div>
+      <div id="intakeReviewQueue">No intake candidates yet.</div>
+    </div>
+  </div>
+<div id="cloudPane-users" class="cloudPane"><div class="card cloudCard"><h3>Users / Roles</h3><div id="cloudUsersList" class="cloudList">Sign in and refresh.</div></div></div>
+</section>
+
+<dialog id="dilutionDialog">
+  <form method="dialog">
+    <div class="head"><div><span>DILUTION</span><h2 id="dDrug">Drug</h2></div><button value="cancel">✕</button></div>
+    <div class="dilutionTop">
+      <div><small>Calculated patient dose</small><b id="dDose">—</b></div>
+      <div><small>Stock concentration</small><b id="dStock">—</b></div>
+    </div>
+
+    <label class="field">Target / working concentration
+      <input id="dTarget" type="number" step="any" min="0">
+      <small id="dRecommended"></small>
+    </label>
+    <label class="field">Final prepared volume (mL)
+      <input id="dFinal" type="number" step="any" min="0" value="10">
+    </label>
+    <label class="field">Diluent
+      <select id="dDiluent"><option>NSS</option><option>D5W</option><option>SWFI</option><option>Other</option></select>
+    </label>
+
+    <div id="dAlert"></div>
+    <div class="prepareBox">
+      <small>PREPARE</small>
+      <div>Drug <b id="dDrugVol">—</b></div>
+      <div>+ <span id="dDiluentName">NSS</span> <b id="dDiluentVol">—</b></div>
+      <div class="finalLine">→ Final <b id="dFinalLine">—</b></div>
+    </div>
+    <div class="drawBox">
+      <small>DRAW / ADMINISTER</small>
+      <b id="dDraw">—</b>
+    </div>
+    <p class="note">Recommended target defaults to the stock concentration unless a verified local/preferred dilution has been defined. Custom concentration remains user-editable.</p>
+  </form>
+</dialog>
+
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+
+<script type="module">
+  try {
+    const pdfjsLib = await import('https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.10.38/pdf.min.mjs');
+    pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.10.38/pdf.worker.min.mjs';
+    window.pdfjsLib = pdfjsLib;
+    window.dispatchEvent(new Event('anesth-pdfjs-ready'));
+  } catch (e) {
+    console.warn('PDF parser unavailable', e);
+  }
+</script>
+
+<script src="./clinical-reasoning.js?v=0720"></script>
+<script src="./app.js?v=0720"></script>
+<script src="./cloud.js?v=0720"></script>
+<div id="appToast" class="appToast" role="status" aria-live="polite"></div>
+</body>
+</html>

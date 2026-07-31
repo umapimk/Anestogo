@@ -1,6 +1,6 @@
 {
   "name": "anesthculator",
-  "version": "0.71.0",
+  "version": "0.72.0",
   "description": "Anesthesia dose, dilution, crisis and clinical reasoning decision-support prototype",
   "private": true,
   "scripts": {

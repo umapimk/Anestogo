@@ -1,17 +1,17 @@
-/* Anesthculator service worker — v0.71.0
+/* Anesthculator service worker — v0.72.0
  * Cache-first app shell for fast offline opening, with background refresh.
  * The release-specific cache name forces old v0.63.x shells to be removed.
  */
-const VERSION = 'v0710-r1';
+const VERSION = 'v0720-r1';
 const CACHE = `anesthculator-${VERSION}`;
 const SHELL = [
   './',
   './index.html',
-  './style.css?v=0710',
-  './clinical-reasoning.js?v=0710',
-  './app.js?v=0710',
-  './manifest.json?v=0710',
-  './cloud.js?v=0710'
+  './style.css?v=0720',
+  './clinical-reasoning.js?v=0720',
+  './app.js?v=0720',
+  './manifest.json?v=0720',
+  './cloud.js?v=0720'
 ];
 
 self.addEventListener('install', event => {
